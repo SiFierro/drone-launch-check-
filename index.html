@@ -14,8 +14,9 @@
       --good:#16a34a; --warn:#f59e0b; --bad:#ef4444;
     }
     *{ box-sizing:border-box; }
+    html, body{ width:100%; overflow-x:hidden; }
 
-    /* iOS-friendly full height: use dynamic viewport + flex column */
+    /* iOS-friendly full height: dynamic viewport + flex column */
     body{
       margin:0;
       font-family:-apple-system,system-ui,Segoe UI,Roboto,Arial;
@@ -31,6 +32,7 @@
 
       overflow:hidden; /* no scroll on dashboard */
       -webkit-font-smoothing: antialiased;
+      touch-action: manipulation;
     }
 
     header{
@@ -38,14 +40,16 @@
       padding:10px 12px 8px;
       background:var(--card);
       border-bottom:1px solid var(--border);
+      min-width:0;
     }
     .topline{
       display:flex;
       gap:10px;
       align-items:center;
       flex-wrap:wrap;
+      min-width:0;
     }
-    h1{ margin:0; font-size:15px; font-weight:900; letter-spacing:.2px; }
+    h1{ margin:0; font-size:15px; font-weight:950; letter-spacing:.2px; }
     .pill{
       padding:3px 8px;
       border:1px solid var(--border);
@@ -63,7 +67,8 @@
     /* Main app container fills remaining space */
     .app{
       flex:1;
-      min-height:0;          /* important for iOS flex overflow behavior */
+      min-height:0; /* critical for iOS flex sizing */
+      width:100%;
       padding:10px;
       padding-bottom:calc(10px + env(safe-area-inset-bottom));
 
@@ -72,10 +77,10 @@
       gap:10px;
 
       max-width:980px;
-      width:100%;
       margin:0 auto;
 
       overflow:hidden;
+      min-width:0;
     }
 
     /* GO/NO-GO bar full width */
@@ -92,51 +97,58 @@
       gap:10px;
 
       min-height:52px;
+      min-width:0;
     }
     .goBar.good{ border-color: rgba(22,163,74,.7); }
     .goBar.warn{ border-color: rgba(245,158,11,.7); }
     .goBar.bad{  border-color: rgba(239,68,68,.7); }
 
-    .goLeft{ display:flex; flex-direction:column; gap:2px; }
+    .goLeft{ display:flex; flex-direction:column; gap:2px; min-width:0; }
     .goLabel{ font-size:11px; color:var(--muted); }
     .goState{ font-size:20px; font-weight:950; letter-spacing:.2px; }
 
+    /* keep buttons compact so they never force horizontal overflow */
     .goRight{
       display:flex;
       gap:8px;
-      flex-wrap:wrap;
-      justify-content:flex-end;
       align-items:center;
+      justify-content:flex-end;
+      flex:0 0 auto;
+      min-width:0;
     }
 
     button{
       border:none;
       border-radius:12px;
       padding:9px 10px;
-      font-weight:850;
+      font-weight:900;
       background:#2563eb;
       color:#fff;
       cursor:pointer;
       font-size:12px;
       line-height:1;
+      white-space:nowrap;
     }
     button.secondary{ background:#374151; }
     button.ghost{
       background:transparent;
       border:1px solid var(--border);
       color:var(--text);
-      font-weight:800;
+      font-weight:900;
     }
 
     /* Grid takes remaining space */
     .grid{
       flex:1;
       min-height:0;
+      width:100%;
+
       display:grid;
-      grid-template-columns:repeat(3, 1fr);
+      grid-template-columns:repeat(3, minmax(0, 1fr)); /* minmax prevents overflow */
       gap:8px;
-      align-content:stretch;
+
       overflow:hidden;
+      min-width:0;
     }
 
     /* Square tiles */
@@ -151,11 +163,14 @@
       justify-content:space-between;
 
       aspect-ratio:1 / 1;
+
       user-select:none;
       -webkit-tap-highlight-color: transparent;
       cursor:pointer;
 
+      min-width:0;
       min-height:0;
+      overflow:hidden;
     }
     .tile.good{ border-color: rgba(22,163,74,.7); }
     .tile.warn{ border-color: rgba(245,158,11,.7); }
@@ -171,6 +186,8 @@
       justify-content:space-between;
       align-items:center;
       gap:6px;
+
+      min-width:0;
     }
 
     .tValueRow{
@@ -178,38 +195,36 @@
       align-items:flex-end;
       justify-content:space-between;
       gap:8px;
+
+      min-width:0;
       min-height:0;
     }
     .tValue{
-      font-size:clamp(16px, 4.2vw, 22px);
+      font-size:clamp(15px, 4.0vw, 22px);
       font-weight:950;
       line-height:1.02;
       letter-spacing:.1px;
+
+      min-width:0;
       overflow:hidden;
       text-overflow:ellipsis;
+      white-space:nowrap;
     }
     .tSub{
       font-size:10px;
       color:var(--muted);
       margin-top:4px;
       line-height:1.1;
-      white-space:nowrap;
+
+      min-width:0;
       overflow:hidden;
       text-overflow:ellipsis;
+      white-space:nowrap;
     }
 
-    /* Wind arrows */
-    .arrowWrap{ display:flex; align-items:center; gap:6px; }
-    .arrowBadge{
-      font-size:10px;
-      color:var(--muted);
-      border:1px solid var(--border);
-      padding:2px 6px;
-      border-radius:999px;
-      flex-shrink:0;
-    }
-    .arrowSmall{ width:26px; height:26px; opacity:.95; flex-shrink:0; }
-    .arrowBig{ width:72px; height:72px; opacity:.98; flex-shrink:0; }
+    /* Small wind arrows: NO badge (saves width) */
+    .arrowSmall{ width:24px; height:24px; opacity:.95; flex-shrink:0; }
+    .arrowBig{ width:70px; height:70px; opacity:.98; flex-shrink:0; }
 
     /* Full-screen modal (only modal scrolls) */
     .modal{
@@ -232,6 +247,7 @@
       flex-direction:column;
       height:100%;
       min-height:0;
+      min-width:0;
     }
     .modalTop{
       padding:12px 14px;
@@ -242,11 +258,16 @@
       align-items:center;
       gap:10px;
       flex:0 0 auto;
+      min-width:0;
     }
     .modalTitle{
       font-size:15px;
       font-weight:950;
       letter-spacing:.2px;
+      min-width:0;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
     }
     .closeX{
       width:40px;
@@ -261,11 +282,14 @@
       align-items:center;
       justify-content:center;
       cursor:pointer;
+      flex:0 0 auto;
     }
     .modalBody{
       padding:14px;
       overflow:auto; /* only scrolling area */
       min-height:0;
+      min-width:0;
+      -webkit-overflow-scrolling: touch;
     }
 
     .detailCard{
@@ -291,6 +315,7 @@
       justify-content:space-between;
       color:var(--text);
       font-size:13px;
+      gap:10px;
     }
     .trendItem span{ color:var(--muted); }
 
@@ -298,14 +323,13 @@
 
     /* Extra-tight phones */
     @media (max-width:380px){
-      header{ padding:9px 10px 7px; }
       .app{ padding:8px; gap:8px; }
       .grid{ gap:7px; }
       .tile{ padding:7px; }
-      .arrowSmall{ width:24px; height:24px; }
-      .arrowBig{ width:64px; height:64px; }
       button{ padding:8px 9px; font-size:12px; }
       .goState{ font-size:19px; }
+      .arrowSmall{ width:22px; height:22px; }
+      .arrowBig{ width:62px; height:62px; }
     }
   </style>
 </head>
@@ -329,8 +353,7 @@
       <div class="goRight">
         <button id="updateBtn">Update</button>
         <button class="secondary" id="manualBtn">Manual</button>
-        <button class="ghost" id="logBtn">Log</button>
-        <button class="ghost" id="settingsBtn">Settings</button>
+        <button class="ghost" id="moreBtn">More</button>
       </div>
     </section>
 
