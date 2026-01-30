@@ -1,4 +1,4 @@
-const STORAGE_KEY = "droneQuickCheck.v5";
+const STORAGE_KEY = "droneQuickCheck.v6";
 const LOG_KEY = "droneQuickCheck.log.v3";
 
 const el = (id) => document.getElementById(id);
@@ -23,7 +23,6 @@ const moreBtn = el("moreBtn");
 
 let lastSnapshot = null;
 
-// Thresholds used internally (not shown on dashboard)
 const DEFAULTS = {
   windGood: 20, windWarn: 30,
   gustGood: 20, gustWarn: 30,
@@ -33,7 +32,6 @@ const DEFAULTS = {
   precipGood: 0.00, precipWarn: 0.05,
   cloudGood: 70, cloudWarn: 90,
 
-  // Battery perf (informational only)
   battNormalF: 50,
   battSevereF: 20
 };
@@ -64,7 +62,6 @@ function addLog(entry){
   saveLog(entries);
 }
 
-// ---------- Weather fetch (FREE, no API key) ----------
 async function fetchOpenMeteo(lat, lon){
   const url =
     "https://api.open-meteo.com/v1/forecast" +
@@ -126,16 +123,15 @@ function formatNumber(val, decimals=0){
   return val.toFixed(decimals);
 }
 
-// Small arrow (no badge) to save horizontal space
 function windArrowSmallSvg(deg){
   const safeDeg = (deg === null || deg === undefined || Number.isNaN(deg)) ? 0 : deg;
   return `
     <svg class="arrowSmall" viewBox="0 0 100 100" role="img" aria-label="Wind direction">
       <g transform="rotate(${safeDeg} 50 50)">
-        <circle cx="50" cy="50" r="28" fill="none" stroke="rgba(229,231,235,.20)" stroke-width="4"/>
-        <line x1="50" y1="18" x2="50" y2="62" stroke="rgba(229,231,235,.95)" stroke-width="6" stroke-linecap="round"/>
-        <polygon points="50,10 40,26 60,26" fill="rgba(229,231,235,.95)"/>
-        <circle cx="50" cy="50" r="6" fill="rgba(229,231,235,.95)"/>
+        <circle cx="50" cy="50" r="28" fill="none" stroke="currentColor" stroke-opacity=".18" stroke-width="4"/>
+        <line x1="50" y1="18" x2="50" y2="62" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
+        <polygon points="50,10 40,26 60,26" fill="currentColor"/>
+        <circle cx="50" cy="50" r="6" fill="currentColor"/>
       </g>
     </svg>
   `;
@@ -145,16 +141,15 @@ function windArrowBigSvg(deg){
   return `
     <svg class="arrowBig" viewBox="0 0 100 100" role="img" aria-label="Wind direction">
       <g transform="rotate(${safeDeg} 50 50)">
-        <circle cx="50" cy="50" r="30" fill="none" stroke="rgba(229,231,235,.20)" stroke-width="4"/>
-        <line x1="50" y1="18" x2="50" y2="62" stroke="rgba(229,231,235,.95)" stroke-width="6" stroke-linecap="round"/>
-        <polygon points="50,10 40,26 60,26" fill="rgba(229,231,235,.95)"/>
-        <circle cx="50" cy="50" r="6" fill="rgba(229,231,235,.95)"/>
+        <circle cx="50" cy="50" r="30" fill="none" stroke="currentColor" stroke-opacity=".18" stroke-width="4"/>
+        <line x1="50" y1="18" x2="50" y2="62" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
+        <polygon points="50,10 40,26 60,26" fill="currentColor"/>
+        <circle cx="50" cy="50" r="6" fill="currentColor"/>
       </g>
     </svg>
   `;
 }
 
-// Approx moon illumination %
 function moonIlluminationPct(date = new Date()){
   const year = date.getUTCFullYear();
   const month = date.getUTCMonth() + 1;
@@ -170,7 +165,6 @@ function moonIlluminationPct(date = new Date()){
   return Math.max(0, Math.min(100, illum));
 }
 
-// Battery perf (informational only)
 function batteryPerfState(tempF, cfg){
   if (tempF === null || tempF === undefined || Number.isNaN(tempF)) return { cls:"warn", label:"UNKNOWN" };
   if (tempF >= cfg.battNormalF) return { cls:"good", label:"NORMAL" };
@@ -178,7 +172,6 @@ function batteryPerfState(tempF, cfg){
   return { cls:"warn", label:"DEGRADED" };
 }
 
-// ---------- Tiles ----------
 const TILE_ORDER = [
   "wind", "gusts", "dir",
   "vis", "precip", "cloud",
@@ -194,7 +187,6 @@ function tileSpec(snapshot){
   const preCls  = classifyLTE(snapshot.precipMm, cfg.precipGood, cfg.precipWarn);
   const cldCls  = classifyLTE(snapshot.cloudPct, cfg.cloudGood, cfg.cloudWarn);
 
-  // TEMP informational only
   const tempInfoCls = (snapshot.tempF !== null && snapshot.tempF !== undefined)
     ? (snapshot.tempF < 32 ? "warn" : "good")
     : "warn";
@@ -227,11 +219,11 @@ function renderTiles(snapshot){
     div.dataset.tile = t.key;
 
     const labelRight = t.smallArrow ? windArrowSmallSvg(snapshot.windDirDeg) : "";
-    const bigArrow = setIf(t.bigArrow, windArrowBigSvg(snapshot.windDirDeg));
+    const bigArrow = t.bigArrow ? windArrowBigSvg(snapshot.windDirDeg) : "";
 
     div.innerHTML = `
       <div class="tLabel">
-        <span>${t.label}</span>
+        <span>${escapeHtml(t.label)}</span>
         <span>${labelRight}</span>
       </div>
 
@@ -248,9 +240,6 @@ function renderTiles(snapshot){
   });
 }
 
-function setIf(cond, html){ return cond ? html : ""; }
-
-// ---------- GO / CAUTION / NO-GO ----------
 function setOverallState(snapshot){
   const cfg = loadCfg();
   const windCls = classifyLTE(snapshot.windMph, cfg.windGood, cfg.windWarn);
@@ -268,7 +257,6 @@ function setOverallState(snapshot){
   snapshot.overall = overall;
 }
 
-// ---------- Modal ----------
 function openModal(title, html){
   modalTitle.textContent = title;
   modalBody.innerHTML = html;
@@ -288,7 +276,6 @@ function escapeHtml(str){
   }[m]));
 }
 
-// ---------- Hourly trend helpers ----------
 function findHourIndex(hourlyTimeISO, currentISO){
   const current = new Date(currentISO).getTime();
   let best = 0;
@@ -364,14 +351,9 @@ function openTileModal(key){
     </div>
   `;
 
-  if (key === "wind"){
-    openModal("Wind", topCard + makeTrendList("Wind speed", "mph", windMphArr, v => v==null ? "—" : v.toFixed(0)));
-    return;
-  }
-  if (key === "gusts"){
-    openModal("Gusts", topCard + makeTrendList("Wind gusts", "mph", gustMphArr, v => v==null ? "—" : v.toFixed(0)));
-    return;
-  }
+  if (key === "wind")   return openModal("Wind", topCard + makeTrendList("Wind speed", "mph", windMphArr, v => v==null ? "—" : v.toFixed(0)));
+  if (key === "gusts")  return openModal("Gusts", topCard + makeTrendList("Wind gusts", "mph", gustMphArr, v => v==null ? "—" : v.toFixed(0)));
+
   if (key === "dir"){
     const items = hourIdxs.map((j) => {
       const t = toClock(times[j]);
@@ -380,7 +362,7 @@ function openTileModal(key){
       return `<div class="trendItem"><div><b>${t}</b></div><div>${txt}</div></div>`;
     }).join("");
 
-    openModal("Wind Direction", `
+    return openModal("Wind Direction", `
       <div class="detailCard">
         <div class="dRow"><div class="dKey">Current</div><div class="dVal">${escapeHtml(s.windDirTxt)}${s.windDirDeg==null ? "" : ` (${Math.round(s.windDirDeg)}°)`}</div></div>
         <div style="display:flex;justify-content:center;margin-top:12px;">${windArrowBigSvg(s.windDirDeg)}</div>
@@ -391,29 +373,17 @@ function openTileModal(key){
         <div class="trend">${items || `<div class="tiny">No hourly data.</div>`}</div>
       </div>
     `);
-    return;
   }
-  if (key === "vis"){
-    openModal("Visibility", topCard + makeTrendList("Visibility", "mi", visMiArr, v => v==null ? "—" : v.toFixed(1)));
-    return;
-  }
-  if (key === "precip"){
-    openModal("Precipitation", topCard + makeTrendList("Precipitation", "mm", precipArr, v => v==null ? "—" : v.toFixed(2)));
-    return;
-  }
-  if (key === "cloud"){
-    openModal("Cloud Cover", topCard + makeTrendList("Cloud cover", "%", cloudArr, v => v==null ? "—" : `${Math.round(v)}`));
-    return;
-  }
-  if (key === "temp"){
-    openModal("Temperature", topCard + makeTrendList("Temperature", "°F", tempArr, v => v==null ? "—" : `${Math.round(v)}`));
-    return;
-  }
+
+  if (key === "vis")    return openModal("Visibility", topCard + makeTrendList("Visibility", "mi", visMiArr, v => v==null ? "—" : v.toFixed(1)));
+  if (key === "precip") return openModal("Precipitation", topCard + makeTrendList("Precipitation", "mm", precipArr, v => v==null ? "—" : v.toFixed(2)));
+  if (key === "cloud")  return openModal("Cloud Cover", topCard + makeTrendList("Cloud cover", "%", cloudArr, v => v==null ? "—" : `${Math.round(v)}`));
+  if (key === "temp")   return openModal("Temperature", topCard + makeTrendList("Temperature", "°F", tempArr, v => v==null ? "—" : `${Math.round(v)}`));
+
   if (key === "battery"){
     const cfg = loadCfg();
     const battNow = batteryPerfState(s.tempF, cfg);
-
-    openModal("Battery Perf", `
+    return openModal("Battery Perf", `
       <div class="detailCard">
         <div class="dRow"><div class="dKey">Current</div><div class="dVal">${battNow.label}</div></div>
         <div class="dRow" style="margin-top:8px;"><div class="dKey">Ambient</div><div class="dVal">${s.tempF==null ? "—" : `${Math.round(s.tempF)}°F`}</div></div>
@@ -429,10 +399,10 @@ function openTileModal(key){
         </div>
       </div>
     `);
-    return;
   }
+
   if (key === "night"){
-    openModal("Night Ops", `
+    return openModal("Night Ops", `
       <div class="detailCard">
         <div class="dRow"><div class="dKey">Now</div><div class="dVal">${s.isNight ? "NIGHT" : "DAY"}</div></div>
         <div class="dRow" style="margin-top:8px;"><div class="dKey">Moon</div><div class="dVal">${Math.round(s.moonPct)}%</div></div>
@@ -442,21 +412,20 @@ function openTileModal(key){
         <div class="dRow" style="margin-top:8px;"><div class="dKey">Sunset</div><div class="dVal">${s.sunsetTxt}</div></div>
       </div>
     `);
-    return;
   }
 }
 
-// ---------- More menu (Log + Settings) ----------
 function openMoreModal(){
   openModal("More", `
     <div class="detailCard">
       <div class="dRow"><div class="dKey">Actions</div><div class="dVal">—</div></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
         <button class="secondary" id="openLog">Launch Log</button>
-        <button class="ghost" id="openSettings">Settings</button>
+        <button class="secondary" id="openSettings">Settings</button>
+        <button class="ghost" id="exportLogBtn">Export Log</button>
       </div>
       <div class="tiny" style="margin-top:10px;">
-        Kept off the main bar to ensure the 3×3 grid always fits on iPhone.
+        Kept off the main bar to keep the grid fully visible on iPhone.
       </div>
     </div>
   `);
@@ -464,6 +433,7 @@ function openMoreModal(){
   setTimeout(() => {
     document.getElementById("openLog")?.addEventListener("click", () => openLogModal());
     document.getElementById("openSettings")?.addEventListener("click", () => openSettingsModal());
+    document.getElementById("exportLogBtn")?.addEventListener("click", exportLog);
   }, 0);
 }
 
@@ -520,7 +490,6 @@ function openSettingsModal(){
 
 function openLogModal(){
   const entries = loadLog();
-
   const list = entries.slice(0, 50).map((e) => {
     return `
       <div class="detailCard">
@@ -541,10 +510,8 @@ function openLogModal(){
 
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
         <button class="secondary" id="logDecision">Log</button>
-        <button class="ghost" id="exportLog">Export</button>
         <button class="ghost" id="clearLog">Clear</button>
       </div>
-
       <div class="tiny" style="margin-top:10px;">Update first so the log captures the latest snapshot.</div>
     </div>
 
@@ -573,7 +540,6 @@ function openLogModal(){
       setStatus(`Logged: ${decision.toUpperCase()}.`);
     });
 
-    document.getElementById("exportLog")?.addEventListener("click", exportLog);
     document.getElementById("clearLog")?.addEventListener("click", () => {
       if (!confirm("Clear all log entries from this device?")) return;
       saveLog([]);
@@ -594,7 +560,6 @@ function exportLog(){
   URL.revokeObjectURL(url);
 }
 
-// ---------- Snapshot build ----------
 function buildSnapshot(data, lat, lon){
   const c = data.current || {};
   const nowISO = c.time || new Date().toISOString();
@@ -648,7 +613,6 @@ function buildSnapshot(data, lat, lon){
   return snapshot;
 }
 
-// ---------- Update pipeline ----------
 async function updateFromGPS(){
   setStatus("Getting GPS…");
   const coords = await getGPS();
@@ -692,7 +656,6 @@ async function updateFromManual(){
   setStatus("Ready.");
 }
 
-// ---------- Events ----------
 updateBtn.addEventListener("click", () => {
   updateFromGPS().catch((e) => {
     console.error(e);
@@ -707,12 +670,10 @@ manualBtn.addEventListener("click", () => {
 });
 moreBtn.addEventListener("click", openMoreModal);
 
-// ---------- Service Worker ----------
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("./sw.js").catch(()=>{});
 }
 
-// Initial placeholders
 function renderEmpty(){
   goState.textContent = "—";
   goBar.classList.remove("good","warn","bad");
