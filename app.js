@@ -1,11 +1,14 @@
-const STORAGE_KEY = "droneQuickCheck.v6";
-const LOG_KEY = "droneQuickCheck.log.v3";
+const STORAGE_KEY = "droneQuickCheck.v7";
+const LOG_KEY = "droneQuickCheck.log.v4";
+const PREF_KEY = "droneQuickCheck.prefs.v1";
+const LAUNCH_KEY = "droneQuickCheck.launch.v1";
 
 const el = (id) => document.getElementById(id);
 
 const statusEl = el("status");
 const locPill = el("locPill");
 const timePill = el("timePill");
+const autoPill = el("autoPill");
 
 const goBar = el("goBar");
 const goState = el("goState");
@@ -22,19 +25,35 @@ const manualBtn = el("manualBtn");
 const moreBtn = el("moreBtn");
 
 let lastSnapshot = null;
+let launchPoint = loadLaunchPoint(); // {lat, lon, timeISO}
+let autoEnabled = loadPrefs().autoRefreshEnabled ?? false;
+let autoTimer = null;
+let countdownTimer = null;
+let nextRefreshAt = null;
 
+// Thresholds used internally (not displayed on tiles)
 const DEFAULTS = {
   windGood: 20, windWarn: 30,
   gustGood: 20, gustWarn: 30,
-
   visGood: 3.0, visWarn: 1.5,
-
   precipGood: 0.00, precipWarn: 0.05,
   cloudGood: 70, cloudWarn: 90,
-
   battNormalF: 50,
   battSevereF: 20
 };
+
+const AUTO_REFRESH_MS = 5 * 60 * 1000;
+
+// Ring distances (meters)
+const RINGS = [
+  { label: "250 ft", meters: 250 * 0.3048 },
+  { label: "500 ft", meters: 500 * 0.3048 },
+  { label: "1000 ft", meters: 1000 * 0.3048 },
+  { label: "0.5 mi", meters: 0.5 * 1609.344 },
+  { label: "1 mi", meters: 1 * 1609.344 },
+  { label: "3 mi", meters: 3 * 1609.344 },
+  { label: "5 mi", meters: 5 * 1609.344 },
+];
 
 function setStatus(msg){ statusEl.textContent = msg; }
 
@@ -45,8 +64,21 @@ function loadCfg(){
     return { ...DEFAULTS };
   }
 }
-function saveCfg(cfg){
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+
+function loadPrefs(){
+  try { return JSON.parse(localStorage.getItem(PREF_KEY)) || {}; }
+  catch { return {}; }
+}
+function savePrefs(p){
+  localStorage.setItem(PREF_KEY, JSON.stringify(p));
+}
+
+function loadLaunchPoint(){
+  try { return JSON.parse(localStorage.getItem(LAUNCH_KEY)) || null; }
+  catch { return null; }
+}
+function saveLaunchPoint(lp){
+  localStorage.setItem(LAUNCH_KEY, JSON.stringify(lp));
 }
 
 function loadLog(){
@@ -62,6 +94,7 @@ function addLog(entry){
   saveLog(entries);
 }
 
+// -------- Weather fetch (FREE, no API key)
 async function fetchOpenMeteo(lat, lon){
   const url =
     "https://api.open-meteo.com/v1/forecast" +
@@ -123,6 +156,7 @@ function formatNumber(val, decimals=0){
   return val.toFixed(decimals);
 }
 
+// Arrows using currentColor (adapts to tile text color)
 function windArrowSmallSvg(deg){
   const safeDeg = (deg === null || deg === undefined || Number.isNaN(deg)) ? 0 : deg;
   return `
@@ -150,6 +184,7 @@ function windArrowBigSvg(deg){
   `;
 }
 
+// Approx moon illumination %
 function moonIlluminationPct(date = new Date()){
   const year = date.getUTCFullYear();
   const month = date.getUTCMonth() + 1;
@@ -165,6 +200,7 @@ function moonIlluminationPct(date = new Date()){
   return Math.max(0, Math.min(100, illum));
 }
 
+// Battery perf informational state
 function batteryPerfState(tempF, cfg){
   if (tempF === null || tempF === undefined || Number.isNaN(tempF)) return { cls:"warn", label:"UNKNOWN" };
   if (tempF >= cfg.battNormalF) return { cls:"good", label:"NORMAL" };
@@ -172,10 +208,11 @@ function batteryPerfState(tempF, cfg){
   return { cls:"warn", label:"DEGRADED" };
 }
 
+// ---------- Tiles (3x3) ----------
 const TILE_ORDER = [
   "wind", "gusts", "dir",
-  "vis", "precip", "cloud",
-  "temp", "night", "battery"
+  "vis", "wx", "tempbatt",
+  "night", "map", "checklist"
 ];
 
 function tileSpec(snapshot){
@@ -184,27 +221,39 @@ function tileSpec(snapshot){
   const windCls = classifyLTE(snapshot.windMph, cfg.windGood, cfg.windWarn);
   const gustCls = classifyLTE(snapshot.gustMph, cfg.gustGood, cfg.gustWarn);
   const visCls  = classifyGTE(snapshot.visMi, cfg.visGood, cfg.visWarn);
+
   const preCls  = classifyLTE(snapshot.precipMm, cfg.precipGood, cfg.precipWarn);
   const cldCls  = classifyLTE(snapshot.cloudPct, cfg.cloudGood, cfg.cloudWarn);
+  const wxCls   = worstClass([preCls, cldCls]);
 
   const tempInfoCls = (snapshot.tempF !== null && snapshot.tempF !== undefined)
     ? (snapshot.tempF < 32 ? "warn" : "good")
     : "warn";
 
   const batt = batteryPerfState(snapshot.tempF, cfg);
+  const tempBattCls = worstClass([tempInfoCls, batt.cls]); // informational only but still color-coded
 
   return {
-    wind:   { key:"wind",   label:"WIND",        cls:windCls, value:`${formatNumber(snapshot.windMph,0)} mph`, sub:`${snapshot.windDirTxt}`, smallArrow:true },
-    gusts:  { key:"gusts",  label:"GUSTS",       cls:gustCls, value:`${formatNumber(snapshot.gustMph,0)} mph`, sub:`${snapshot.windDirTxt}`, smallArrow:true },
-    dir:    { key:"dir",    label:"DIR",         cls:"good",  value:`${snapshot.windDirTxt}${snapshot.windDirDeg==null ? "" : ` (${Math.round(snapshot.windDirDeg)}°)`}`, sub:`Wind FROM`, bigArrow:true },
-    vis:    { key:"vis",    label:"VIS",         cls:visCls,  value:`${formatNumber(snapshot.visMi,1)} mi`, sub:`` },
-    precip: { key:"precip", label:"PRECIP",      cls:preCls,  value:`${formatNumber(snapshot.precipMm,2)} mm`, sub:`` },
-    cloud:  { key:"cloud",  label:"CLOUD",       cls:cldCls,  value:`${formatNumber(snapshot.cloudPct,0)}%`, sub:`` },
-    temp:   { key:"temp",   label:"TEMP",        cls:tempInfoCls, value:`${formatNumber(snapshot.tempF,0)}°F`, sub:`` },
-    night:  { key:"night",  label:"NIGHT OPS",   cls:snapshot.isNight ? "warn" : "good",
+    wind:   { key:"wind", label:"WIND", cls:windCls, value:`${formatNumber(snapshot.windMph,0)} mph`, sub:`${snapshot.windDirTxt}`, smallArrow:true },
+    gusts:  { key:"gusts",label:"GUSTS",cls:gustCls, value:`${formatNumber(snapshot.gustMph,0)} mph`, sub:`${snapshot.windDirTxt}`, smallArrow:true },
+    dir:    { key:"dir",  label:"DIR",  cls:"good", value:`${snapshot.windDirTxt}${snapshot.windDirDeg==null ? "" : ` (${Math.round(snapshot.windDirDeg)}°)`}`, sub:`Wind FROM`, bigArrow:true },
+
+    vis:    { key:"vis",  label:"VIS",  cls:visCls, value:`${formatNumber(snapshot.visMi,1)} mi`, sub:`` },
+
+    wx:     { key:"wx",   label:"WX",   cls:wxCls,
+              value:`${formatNumber(snapshot.precipMm,2)} mm / ${formatNumber(snapshot.cloudPct,0)}%`,
+              sub:`precip / cloud` },
+
+    tempbatt:{ key:"tempbatt", label:"TEMP+BATT", cls:tempBattCls,
+               value:`${formatNumber(snapshot.tempF,0)}°F • ${batt.label}`,
+               sub:`informational` },
+
+    night:  { key:"night",label:"NIGHT OPS", cls:snapshot.isNight ? "warn" : "good",
               value:`${snapshot.isNight ? "NIGHT" : "DAY"} • Moon ${Math.round(snapshot.moonPct)}%`,
               sub:`Sunrise ${snapshot.sunriseTxt} • Sunset ${snapshot.sunsetTxt}` },
-    battery:{ key:"battery",label:"BATTERY PERF",cls:batt.cls, value:`${batt.label}`, sub:`${formatNumber(snapshot.tempF,0)}°F` }
+
+    map:    { key:"map", label:"MAP", cls:"neutral", value:`${launchPoint ? "Launch set" : "No launch set"}`, sub:`Tap for rings + wind` },
+    checklist:{ key:"checklist", label:"CHECKLIST", cls:"neutral", value:`Mavic 3T • Aloft`, sub:`Tap full-screen` }
   };
 }
 
@@ -215,7 +264,9 @@ function renderTiles(snapshot){
   TILE_ORDER.forEach((k) => {
     const t = specs[k];
     const div = document.createElement("div");
-    div.className = `tile ${t.cls}`;
+
+    const tileClass = (t.cls === "neutral") ? "tile neutral" : `tile ${t.cls}`;
+    div.className = tileClass;
     div.dataset.tile = t.key;
 
     const labelRight = t.smallArrow ? windArrowSmallSvg(snapshot.windDirDeg) : "";
@@ -240,11 +291,13 @@ function renderTiles(snapshot){
   });
 }
 
+// ---------- GO/CAUTION/NO-GO (WEATHER ONLY)
 function setOverallState(snapshot){
   const cfg = loadCfg();
   const windCls = classifyLTE(snapshot.windMph, cfg.windGood, cfg.windWarn);
   const gustCls = classifyLTE(snapshot.gustMph, cfg.gustGood, cfg.gustWarn);
   const visCls  = classifyGTE(snapshot.visMi, cfg.visGood, cfg.visWarn);
+
   const preCls  = classifyLTE(snapshot.precipMm, cfg.precipGood, cfg.precipWarn);
   const cldCls  = classifyLTE(snapshot.cloudPct, cfg.cloudGood, cfg.cloudWarn);
 
@@ -257,6 +310,7 @@ function setOverallState(snapshot){
   snapshot.overall = overall;
 }
 
+// ---------- Modal helpers
 function openModal(title, html){
   modalTitle.textContent = title;
   modalBody.innerHTML = html;
@@ -276,10 +330,10 @@ function escapeHtml(str){
   }[m]));
 }
 
+// ---------- Hourly trends (next 4 hours)
 function findHourIndex(hourlyTimeISO, currentISO){
   const current = new Date(currentISO).getTime();
-  let best = 0;
-  let bestDelta = Infinity;
+  let best = 0, bestDelta = Infinity;
   for (let i=0;i<hourlyTimeISO.length;i++){
     const t = new Date(hourlyTimeISO[i]).getTime();
     const d = Math.abs(t - current);
@@ -306,8 +360,19 @@ function trendLabel(values){
   return delta > 0 ? "INCREASING" : "DECREASING";
 }
 
+// ---------- Tile actions
 function openTileModal(key){
-  if (!lastSnapshot) return;
+  if (!lastSnapshot && key !== "checklist" && key !== "map") {
+    return openModal("No data yet", `
+      <div class="detailCard">
+        <div class="dRow"><div class="dKey">Status</div><div class="dVal">Update first</div></div>
+        <div class="tiny">Tap Update to pull conditions and set launch point.</div>
+      </div>
+    `);
+  }
+
+  if (key === "checklist") return openChecklist();
+  if (key === "map") return openMap();
 
   const s = lastSnapshot;
   const data = s.raw;
@@ -345,14 +410,19 @@ function openTileModal(key){
   const tempArr    = (h.temperature_2m || []);
   const dirArr     = (h.wind_direction_10m || []);
 
-  const topCard = `
+  const topCard = (title, value) => `
     <div class="detailCard">
-      <div class="dRow"><div class="dKey">Current</div><div class="dVal">${escapeHtml(s.tileReadout[key] || "—")}</div></div>
+      <div class="dRow"><div class="dKey">${escapeHtml(title)}</div><div class="dVal">${escapeHtml(value)}</div></div>
     </div>
   `;
 
-  if (key === "wind")   return openModal("Wind", topCard + makeTrendList("Wind speed", "mph", windMphArr, v => v==null ? "—" : v.toFixed(0)));
-  if (key === "gusts")  return openModal("Gusts", topCard + makeTrendList("Wind gusts", "mph", gustMphArr, v => v==null ? "—" : v.toFixed(0)));
+  if (key === "wind") return openModal("Wind",
+    topCard("Current", `${formatNumber(s.windMph,0)} mph`) + makeTrendList("Wind speed", "mph", windMphArr, v => v==null ? "—" : v.toFixed(0))
+  );
+
+  if (key === "gusts") return openModal("Gusts",
+    topCard("Current", `${formatNumber(s.gustMph,0)} mph`) + makeTrendList("Wind gusts", "mph", gustMphArr, v => v==null ? "—" : v.toFixed(0))
+  );
 
   if (key === "dir"){
     const items = hourIdxs.map((j) => {
@@ -375,23 +445,31 @@ function openTileModal(key){
     `);
   }
 
-  if (key === "vis")    return openModal("Visibility", topCard + makeTrendList("Visibility", "mi", visMiArr, v => v==null ? "—" : v.toFixed(1)));
-  if (key === "precip") return openModal("Precipitation", topCard + makeTrendList("Precipitation", "mm", precipArr, v => v==null ? "—" : v.toFixed(2)));
-  if (key === "cloud")  return openModal("Cloud Cover", topCard + makeTrendList("Cloud cover", "%", cloudArr, v => v==null ? "—" : `${Math.round(v)}`));
-  if (key === "temp")   return openModal("Temperature", topCard + makeTrendList("Temperature", "°F", tempArr, v => v==null ? "—" : `${Math.round(v)}`));
+  if (key === "vis") return openModal("Visibility",
+    topCard("Current", `${formatNumber(s.visMi,1)} mi`) + makeTrendList("Visibility", "mi", visMiArr, v => v==null ? "—" : v.toFixed(1))
+  );
 
-  if (key === "battery"){
+  if (key === "wx"){
+    return openModal("Weather (Precip / Cloud)", `
+      ${topCard("Current", `${formatNumber(s.precipMm,2)} mm precip / ${formatNumber(s.cloudPct,0)}% cloud`)}
+      ${makeTrendList("Precipitation", "mm", precipArr, v => v==null ? "—" : v.toFixed(2))}
+      ${makeTrendList("Cloud cover", "%", cloudArr, v => v==null ? "—" : `${Math.round(v)}`)}
+      <div class="tiny">WX tile combines precip + cloud so the dashboard stays 3×3 (no scroll).</div>
+    `);
+  }
+
+  if (key === "tempbatt"){
     const cfg = loadCfg();
-    const battNow = batteryPerfState(s.tempF, cfg);
-    return openModal("Battery Perf", `
+    const batt = batteryPerfState(s.tempF, cfg);
+    return openModal("Temp + Battery Perf (Info)", `
       <div class="detailCard">
-        <div class="dRow"><div class="dKey">Current</div><div class="dVal">${battNow.label}</div></div>
-        <div class="dRow" style="margin-top:8px;"><div class="dKey">Ambient</div><div class="dVal">${s.tempF==null ? "—" : `${Math.round(s.tempF)}°F`}</div></div>
-        <div class="tiny">Informational only. Does not affect GO / NO-GO.</div>
+        <div class="dRow"><div class="dKey">Ambient</div><div class="dVal">${s.tempF==null ? "—" : `${Math.round(s.tempF)}°F`}</div></div>
+        <div class="dRow" style="margin-top:8px;"><div class="dKey">Battery perf</div><div class="dVal">${batt.label}</div></div>
+        <div class="tiny">Informational only. Not tied to GO/NO-GO.</div>
       </div>
       ${makeTrendList("Ambient temperature", "°F", tempArr, v => v==null ? "—" : `${Math.round(v)}`)}
       <div class="detailCard">
-        <div class="dRow"><div class="dKey">Operational considerations</div><div class="dVal">—</div></div>
+        <div class="dRow"><div class="dKey">Operational reminders</div><div class="dVal">—</div></div>
         <div class="tiny">
           • Pre-warm packs when possible<br/>
           • Rotate batteries more frequently<br/>
@@ -415,76 +493,212 @@ function openTileModal(key){
   }
 }
 
-function openMoreModal(){
-  openModal("More", `
+// ---------- Checklist (visual only)
+function openChecklist(){
+  openModal("Checklist (Visual)", `
     <div class="detailCard">
-      <div class="dRow"><div class="dKey">Actions</div><div class="dVal">—</div></div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
-        <button class="secondary" id="openLog">Launch Log</button>
-        <button class="secondary" id="openSettings">Settings</button>
-        <button class="ghost" id="exportLogBtn">Export Log</button>
-      </div>
-      <div class="tiny" style="margin-top:10px;">
-        Kept off the main bar to keep the grid fully visible on iPhone.
-      </div>
+      <div class="dRow"><div class="dKey">Platform</div><div class="dVal">DJI Mavic 3T</div></div>
+      <div class="dRow" style="margin-top:8px;"><div class="dKey">Streaming</div><div class="dVal">Aloft required</div></div>
+      <div class="tiny">This is a quick-reference checklist (no inputs).</div>
+    </div>
+
+    <div class="sectionTitle">Admin / Accounts</div>
+    <div class="checklistItem">Sign into correct DJI controller profile/account
+      <small>Confirm mission/operator profile is correct before flight.</small>
+    </div>
+    <div class="checklistItem">Sign into Aloft and start mission streaming
+      <small>Confirm streaming is active before launch.</small>
+    </div>
+
+    <div class="sectionTitle">Scene Setup</div>
+    <div class="checklistItem">Set out landing pad / designate launch area
+      <small>Keep props clear, control rotor wash area.</small>
+    </div>
+    <div class="checklistItem">Perimeter / bystanders controlled
+      <small>Assign someone to keep people back if needed.</small>
+    </div>
+
+    <div class="sectionTitle">Airspace / Authorization</div>
+    <div class="checklistItem">Check airspace in Aloft (restrictions / authorizations)
+      <small>Confirm any LAANC/TFR considerations.</small>
+    </div>
+
+    <div class="sectionTitle">Aircraft / Systems</div>
+    <div class="checklistItem">Batteries seated &amp; sufficient charge
+      <small>Plan for return reserve &amp; time-on-station needs.</small>
+    </div>
+    <div class="checklistItem">Props/arms/airframe quick check
+      <small>Loose props, cracks, gimbal cover, lens clean.</small>
+    </div>
+    <div class="checklistItem">Recording / storage ready (if needed)
+      <small>SD card space, record toggle, correct camera mode.</small>
+    </div>
+
+    <div class="sectionTitle">Plan / Comms</div>
+    <div class="checklistItem">Objective, search pattern, and comms plan briefed
+      <small>Who is PIC / VO (if used), emergency actions, lost link plan.</small>
+    </div>
+
+    <div class="sectionTitle">Night Ops (if night)</div>
+    <div class="checklistItem">Strobes / visibility measures set
+      <small>Confirm required lighting and situational awareness.</small>
     </div>
   `);
-
-  setTimeout(() => {
-    document.getElementById("openLog")?.addEventListener("click", () => openLogModal());
-    document.getElementById("openSettings")?.addEventListener("click", () => openSettingsModal());
-    document.getElementById("exportLogBtn")?.addEventListener("click", exportLog);
-  }, 0);
 }
 
-function openSettingsModal(){
-  const cfg = loadCfg();
-  openModal("Settings", `
+// ---------- Map (OpenStreetMap + rings + launch marker)
+function openMap(){
+  const lp = launchPoint;
+  const cur = lastSnapshot ? { lat: lastSnapshot.lat, lon: lastSnapshot.lon } : null;
+
+  openModal("Map (Launch + Rings)", `
     <div class="detailCard">
-      <div class="dRow"><div class="dKey">Wind caution</div><div class="dVal">${cfg.windGood} mph</div></div>
-      <div class="dRow" style="margin-top:10px;"><div class="dKey">Wind no-go</div><div class="dVal">${cfg.windWarn} mph</div></div>
+      <div class="dRow"><div class="dKey">Launch From</div><div class="dVal">${lp ? `${lp.lat.toFixed(5)}, ${lp.lon.toFixed(5)}` : "Not set"}</div></div>
+      <div class="dRow" style="margin-top:8px;"><div class="dKey">Rings</div><div class="dVal">${RINGS.map(r=>r.label).join(", ")}</div></div>
+      <div class="tiny">Launch point is set when you tap Update.</div>
+    </div>
 
-      <div style="margin-top:12px; display:grid; gap:10px;">
-        <label class="dKey">Wind caution (mph)</label>
-        <input id="sWindGood" type="number" value="${cfg.windGood}" style="width:100%;padding:10px;border-radius:12px;border:1px solid #374151;background:#0b1220;color:#e5e7eb;">
+    <div id="map"></div>
 
-        <label class="dKey">Wind no-go (mph)</label>
-        <input id="sWindWarn" type="number" value="${cfg.windWarn}" style="width:100%;padding:10px;border-radius:12px;border:1px solid #374151;background:#0b1220;color:#e5e7eb;">
+    <div class="detailCard" style="margin-top:10px;">
+      <div class="dRow"><div class="dKey">Wind</div><div class="dVal">${lastSnapshot ? `${lastSnapshot.windDirTxt} • ${Math.round(lastSnapshot.windMph||0)} mph` : "—"}</div></div>
+      <div class="tiny">Wind overlay is directional (from). This is for quick orientation.</div>
+    </div>
+  `);
 
-        <label class="dKey">Gust caution (mph)</label>
-        <input id="sGustGood" type="number" value="${cfg.gustGood}" style="width:100%;padding:10px;border-radius:12px;border:1px solid #374151;background:#0b1220;color:#e5e7eb;">
+  // Defer map init until modal DOM is painted
+  setTimeout(() => {
+    try {
+      initLeafletMap(lp, cur, lastSnapshot);
+    } catch (e) {
+      console.error(e);
+      const mapDiv = document.getElementById("map");
+      if (mapDiv) mapDiv.innerHTML = `<div class="tiny">Map failed to load. (No network or blocked CDN.)</div>`;
+    }
+  }, 60);
+}
 
-        <label class="dKey">Gust no-go (mph)</label>
-        <input id="sGustWarn" type="number" value="${cfg.gustWarn}" style="width:100%;padding:10px;border-radius:12px;border:1px solid #374151;background:#0b1220;color:#e5e7eb;">
+let _leafletMap = null;
+function initLeafletMap(lp, cur, snap){
+  const mapDiv = document.getElementById("map");
+  if (!mapDiv) return;
 
-        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;">
-          <button class="secondary" id="saveSettings">Save</button>
-          <button class="ghost" id="resetSettings">Reset</button>
-        </div>
+  // Kill any prior map instance if re-opening
+  if (_leafletMap) {
+    _leafletMap.remove();
+    _leafletMap = null;
+  }
+
+  const center = lp ? [lp.lat, lp.lon] : (cur ? [cur.lat, cur.lon] : [33.5604, -81.7196]); // fallback
+  const map = L.map(mapDiv, { zoomControl: true }).setView(center, 13);
+  _leafletMap = map;
+
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "&copy; OpenStreetMap contributors"
+  }).addTo(map);
+
+  const launchIcon = L.divIcon({
+    className: "",
+    html: `<div style="width:14px;height:14px;border-radius:999px;background:#60a5fa;border:2px solid #0b1220;box-shadow:0 0 0 2px rgba(96,165,250,.25);"></div>`,
+    iconSize: [14,14],
+    iconAnchor: [7,7]
+  });
+
+  const currentIcon = L.divIcon({
+    className: "",
+    html: `<div style="width:12px;height:12px;border-radius:999px;background:#e5e7eb;border:2px solid #0b1220;opacity:.95;"></div>`,
+    iconSize: [12,12],
+    iconAnchor: [6,6]
+  });
+
+  let bounds = [];
+
+  if (lp){
+    L.marker([lp.lat, lp.lon], { icon: launchIcon }).addTo(map).bindPopup("Launch From");
+    bounds.push([lp.lat, lp.lon]);
+
+    // rings around launch
+    for (const r of RINGS) {
+      const c = L.circle([lp.lat, lp.lon], {
+        radius: r.meters,
+        color: "#94a3b8",
+        weight: 1,
+        opacity: 0.55,
+        fillOpacity: 0.02
+      }).addTo(map);
+      c.bindTooltip(r.label, { permanent:false, direction:"center" });
+    }
+  }
+
+  if (cur){
+    L.marker([cur.lat, cur.lon], { icon: currentIcon }).addTo(map).bindPopup("Current");
+    bounds.push([cur.lat, cur.lon]);
+  }
+
+  // wind overlay: small arrow line from center pointing "from" direction
+  if (lp && snap && snap.windDirDeg != null){
+    const fromDeg = snap.windDirDeg;
+    const lineLen = 600; // meters visual line
+    const dest = destinationPoint(lp.lat, lp.lon, (fromDeg + 180) % 360, lineLen); // draw "toward" to show incoming
+    L.polyline([[lp.lat, lp.lon],[dest.lat, dest.lon]], {
+      color:"#e5e7eb", weight:3, opacity:0.65
+    }).addTo(map);
+  }
+
+  if (bounds.length >= 2) {
+    map.fitBounds(bounds, { padding:[20,20] });
+  } else {
+    map.setView(center, 13);
+  }
+}
+
+function destinationPoint(lat, lon, bearingDeg, distanceMeters){
+  const R = 6371000;
+  const brng = bearingDeg * Math.PI/180;
+  const φ1 = lat * Math.PI/180;
+  const λ1 = lon * Math.PI/180;
+  const δ = distanceMeters / R;
+
+  const φ2 = Math.asin(Math.sin(φ1)*Math.cos(δ) + Math.cos(φ1)*Math.sin(δ)*Math.cos(brng));
+  const λ2 = λ1 + Math.atan2(Math.sin(brng)*Math.sin(δ)*Math.cos(φ1), Math.cos(δ)-Math.sin(φ1)*Math.sin(φ2));
+  return { lat: φ2*180/Math.PI, lon: ((λ2*180/Math.PI + 540) % 360) - 180 };
+}
+
+// ---------- More menu (Auto refresh + Export + Log)
+function openMoreModal(){
+  const autoText = autoEnabled ? "ON" : "OFF";
+  const nextTxt = (autoEnabled && nextRefreshAt) ? `Next in ${formatCountdown(nextRefreshAt - Date.now())}` : "—";
+
+  openModal("More", `
+    <div class="detailCard">
+      <div class="dRow"><div class="dKey">Auto refresh</div><div class="dVal">${autoText}</div></div>
+      <div class="dRow" style="margin-top:8px;"><div class="dKey">Every</div><div class="dVal">5 min</div></div>
+      <div class="dRow" style="margin-top:8px;"><div class="dKey">Countdown</div><div class="dVal">${escapeHtml(nextTxt)}</div></div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
+        <button class="secondary" id="toggleAuto">${autoEnabled ? "Turn OFF" : "Turn ON"}</button>
+        <button class="secondary" id="exportReport">Export report</button>
+        <button class="ghost" id="openLog">Launch log</button>
+      </div>
+
+      <div class="tiny" style="margin-top:10px;">
+        Export opens a printable report. On iPhone: Share → Print → Save as PDF.
       </div>
     </div>
   `);
 
   setTimeout(() => {
-    document.getElementById("saveSettings")?.addEventListener("click", () => {
-      const next = loadCfg();
-      next.windGood = parseFloat(document.getElementById("sWindGood")?.value) || DEFAULTS.windGood;
-      next.windWarn = parseFloat(document.getElementById("sWindWarn")?.value) || DEFAULTS.windWarn;
-      next.gustGood = parseFloat(document.getElementById("sGustGood")?.value) || DEFAULTS.gustGood;
-      next.gustWarn = parseFloat(document.getElementById("sGustWarn")?.value) || DEFAULTS.gustWarn;
-
-      saveCfg(next);
-      if (lastSnapshot) { setOverallState(lastSnapshot); renderTiles(lastSnapshot); }
+    document.getElementById("toggleAuto")?.addEventListener("click", () => {
+      setAutoRefresh(!autoEnabled);
       closeModal();
-      setStatus("Settings saved.");
+      setStatus(`Auto refresh ${autoEnabled ? "ON" : "OFF"}.`);
+      refreshAutoPill();
     });
-
-    document.getElementById("resetSettings")?.addEventListener("click", () => {
-      saveCfg({ ...DEFAULTS });
-      if (lastSnapshot) { setOverallState(lastSnapshot); renderTiles(lastSnapshot); }
-      closeModal();
-      setStatus("Settings reset.");
+    document.getElementById("exportReport")?.addEventListener("click", () => {
+      exportReport();
     });
+    document.getElementById("openLog")?.addEventListener("click", () => openLogModal());
   }, 0);
 }
 
@@ -498,48 +712,23 @@ function openLogModal(){
           (${e.lat.toFixed(4)}, ${e.lon.toFixed(4)})<br/>
           Wind ${e.windTxt} • Gust ${e.gustTxt} • Vis ${e.visTxt}
         </div>
-        ${e.note ? `<div class="tiny" style="margin-top:10px;color:#e5e7eb;white-space:pre-wrap;">${escapeHtml(e.note)}</div>` : ""}
       </div>
     `;
   }).join("");
 
   openModal("Launch Log", `
     <div class="detailCard">
-      <label class="dKey">Note (optional)</label>
-      <textarea id="logNote" style="width:100%;min-height:90px;padding:10px;border-radius:12px;border:1px solid #374151;background:#0b1220;color:#e5e7eb;"></textarea>
-
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
-        <button class="secondary" id="logDecision">Log</button>
-        <button class="ghost" id="clearLog">Clear</button>
+      <div class="dRow"><div class="dKey">Entries shown</div><div class="dVal">${Math.min(entries.length, 50)}</div></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
+        <button class="secondary" id="clearLog">Clear</button>
       </div>
-      <div class="tiny" style="margin-top:10px;">Update first so the log captures the latest snapshot.</div>
+      <div class="tiny" style="margin-top:10px;">Log entries are created automatically when you export a report.</div>
     </div>
 
     ${list || `<div class="tiny">No entries yet.</div>`}
   `);
 
   setTimeout(() => {
-    document.getElementById("logDecision")?.addEventListener("click", () => {
-      if (!lastSnapshot) return alert("Update first so there’s a snapshot to log.");
-      const note = (document.getElementById("logNote")?.value || "").trim();
-      const decision = lastSnapshot.overall === "good" ? "go" : (lastSnapshot.overall === "warn" ? "caution" : "no-go");
-
-      addLog({
-        createdAt: Date.now(),
-        decision,
-        note,
-        lat: lastSnapshot.lat,
-        lon: lastSnapshot.lon,
-        windTxt: `${Math.round(lastSnapshot.windMph ?? 0)} mph`,
-        gustTxt: `${Math.round(lastSnapshot.gustMph ?? 0)} mph`,
-        visTxt: `${(lastSnapshot.visMi==null ? "—" : lastSnapshot.visMi.toFixed(1))} mi`,
-        snapshot: lastSnapshot
-      });
-
-      closeModal();
-      setStatus(`Logged: ${decision.toUpperCase()}.`);
-    });
-
     document.getElementById("clearLog")?.addEventListener("click", () => {
       if (!confirm("Clear all log entries from this device?")) return;
       saveLog([]);
@@ -549,17 +738,186 @@ function openLogModal(){
   }, 0);
 }
 
-function exportLog(){
-  const entries = loadLog();
-  const blob = new Blob([JSON.stringify(entries, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `drone-launch-log-${new Date().toISOString().slice(0,10)}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
+// ---------- Export report (PDF-style via Print)
+function exportReport(){
+  if (!lastSnapshot){
+    return openModal("Export report", `
+      <div class="detailCard">
+        <div class="dRow"><div class="dKey">Status</div><div class="dVal">Update first</div></div>
+        <div class="tiny">Run Update to capture weather + location + launch point, then export.</div>
+      </div>
+    `);
+  }
+
+  const s = lastSnapshot;
+  const lp = launchPoint;
+
+  const decision = s.overall === "good" ? "GO" : (s.overall === "warn" ? "CAUTION" : "NO-GO");
+
+  // Static OSM map image (free, no key). Marker at launch + current.
+  // NOTE: This is a convenience image for the report.
+  const staticMapUrl = buildStaticMapUrl(lp, { lat:s.lat, lon:s.lon });
+
+  const html = `
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Drone Launch Report</title>
+<style>
+  body{ font-family: -apple-system, system-ui, Segoe UI, Roboto, Arial; margin: 22px; color:#111; }
+  h1{ margin:0 0 6px; font-size:20px; }
+  .sub{ color:#444; margin-bottom:14px; font-size:12px; }
+  .pill{ display:inline-block; padding:4px 10px; border-radius:999px; font-weight:900; font-size:12px; }
+  .go{ background:#d1fae5; color:#065f46; }
+  .caution{ background:#fffbeb; color:#92400e; }
+  .nogo{ background:#fee2e2; color:#991b1b; }
+  .grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; }
+  .card{ border:1px solid #ddd; border-radius:12px; padding:12px; }
+  .k{ color:#666; font-size:12px; }
+  .v{ font-size:16px; font-weight:900; margin-top:2px; }
+  img{ max-width:100%; border-radius:12px; border:1px solid #ddd; }
+  .small{ font-size:11px; color:#555; margin-top:10px; line-height:1.35; }
+  @media print {
+    body{ margin: 0.5in; }
+  }
+</style>
+</head>
+<body>
+  <h1>Drone Launch Report</h1>
+  <div class="sub">
+    Generated: ${new Date().toLocaleString()}<br/>
+    Snapshot: ${new Date(s.timeISO).toLocaleString()}
+  </div>
+
+  <div>
+    <span class="pill ${decision === "GO" ? "go" : (decision==="CAUTION" ? "caution" : "nogo")}">${decision}</span>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="k">Location</div>
+      <div class="v">${s.lat.toFixed(5)}, ${s.lon.toFixed(5)}</div>
+      <div class="small">Launch From: ${lp ? `${lp.lat.toFixed(5)}, ${lp.lon.toFixed(5)}` : "Not set"}</div>
+    </div>
+
+    <div class="card">
+      <div class="k">Wind</div>
+      <div class="v">${Math.round(s.windMph || 0)} mph • Gust ${Math.round(s.gustMph || 0)} mph</div>
+      <div class="small">Direction: ${s.windDirTxt}${s.windDirDeg==null ? "" : ` (${Math.round(s.windDirDeg)}°)`}</div>
+    </div>
+
+    <div class="card">
+      <div class="k">Visibility</div>
+      <div class="v">${(s.visMi==null ? "—" : s.visMi.toFixed(1))} mi</div>
+      <div class="small">Cloud: ${s.cloudPct==null ? "—" : Math.round(s.cloudPct)}% • Precip: ${s.precipMm==null ? "—" : s.precipMm.toFixed(2)} mm</div>
+    </div>
+
+    <div class="card">
+      <div class="k">Night Ops</div>
+      <div class="v">${s.isNight ? "NIGHT" : "DAY"} • Moon ${Math.round(s.moonPct)}%</div>
+      <div class="small">Sunrise ${s.sunriseTxt} • Sunset ${s.sunsetTxt}</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:12px;">
+    <div class="k">Map</div>
+    <div class="small">Rings: ${RINGS.map(r => r.label).join(", ")} (centered on Launch From)</div>
+    ${staticMapUrl ? `<img src="${staticMapUrl}" alt="Map"/>` : `<div class="small">Map image unavailable.</div>`}
+    <div class="small">Tip: rings are shown in-app. The report includes this map as a visual reference.</div>
+  </div>
+</body>
+</html>`;
+
+  const w = window.open("", "_blank");
+  if (!w) {
+    return openModal("Export report", `
+      <div class="detailCard">
+        <div class="dRow"><div class="dKey">Popup blocked</div><div class="dVal">Allow popups</div></div>
+        <div class="tiny">Safari may block the report window. Allow popups for this site and try again.</div>
+      </div>
+    `);
+  }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+
+  // Also log the export automatically (simple, defensible)
+  addLog({
+    createdAt: Date.now(),
+    decision: decision.toLowerCase(),
+    lat: s.lat,
+    lon: s.lon,
+    windTxt: `${Math.round(s.windMph ?? 0)} mph`,
+    gustTxt: `${Math.round(s.gustMph ?? 0)} mph`,
+    visTxt: `${(s.visMi==null ? "—" : s.visMi.toFixed(1))} mi`,
+    snapshot: s,
+    launchPoint: launchPoint
+  });
+
+  setStatus("Report opened. Use Share → Print → Save as PDF.");
 }
 
+function buildStaticMapUrl(lp, cur){
+  // Uses staticmap.openstreetmap.de (free, no key)
+  // Markers: red = launch, blue = current
+  const center = lp ? `${lp.lat},${lp.lon}` : `${cur.lat},${cur.lon}`;
+  const zoom = 13;
+  const size = "800x450";
+
+  const markers = [];
+  if (lp) markers.push(`markers=${lp.lat},${lp.lon},red-pushpin`);
+  if (cur) markers.push(`markers=${cur.lat},${cur.lon},blue-pushpin`);
+
+  // Some networks may block this. If it fails, report still works.
+  return `https://staticmap.openstreetmap.de/staticmap.php?center=${encodeURIComponent(center)}&zoom=${zoom}&size=${size}&maptype=mapnik&${markers.join("&")}`;
+}
+
+function formatCountdown(ms){
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${String(r).padStart(2,"0")}`;
+}
+
+// ---------- Auto refresh
+function refreshAutoPill(){
+  if (!autoEnabled){
+    autoPill.textContent = "Auto: OFF";
+    return;
+  }
+  const remaining = nextRefreshAt ? Math.max(0, nextRefreshAt - Date.now()) : 0;
+  autoPill.textContent = `Auto: ON • ${formatCountdown(remaining)}`;
+}
+
+function setAutoRefresh(enable){
+  autoEnabled = enable;
+  savePrefs({ ...loadPrefs(), autoRefreshEnabled: autoEnabled });
+
+  if (autoTimer) clearInterval(autoTimer);
+  if (countdownTimer) clearInterval(countdownTimer);
+  autoTimer = null;
+  countdownTimer = null;
+  nextRefreshAt = null;
+
+  if (autoEnabled){
+    nextRefreshAt = Date.now() + AUTO_REFRESH_MS;
+    autoTimer = setInterval(() => {
+      nextRefreshAt = Date.now() + AUTO_REFRESH_MS;
+      refreshAutoPill();
+      updateFromGPS(true).catch(()=>{});
+    }, AUTO_REFRESH_MS);
+
+    countdownTimer = setInterval(() => {
+      refreshAutoPill();
+    }, 1000);
+  }
+
+  refreshAutoPill();
+}
+
+// ---------- Snapshot build
 function buildSnapshot(data, lat, lon){
   const c = data.current || {};
   const nowISO = c.time || new Date().toISOString();
@@ -587,9 +945,7 @@ function buildSnapshot(data, lat, lon){
 
   const moonPct = moonIlluminationPct(now);
 
-  const cfg = loadCfg();
-
-  const snapshot = {
+  return {
     timeISO: nowISO,
     lat, lon,
     windMph, gustMph, windDirDeg, windDirTxt,
@@ -597,24 +953,11 @@ function buildSnapshot(data, lat, lon){
     isNight, sunriseTxt, sunsetTxt, moonPct,
     raw: data
   };
-
-  snapshot.tileReadout = {
-    wind: `${formatNumber(windMph,0)} mph`,
-    gusts: `${formatNumber(gustMph,0)} mph`,
-    dir: `${windDirTxt}${windDirDeg==null ? "" : ` (${Math.round(windDirDeg)}°)`}`,
-    vis: `${formatNumber(visMi,1)} mi`,
-    precip: `${formatNumber(precipMm,2)} mm`,
-    cloud: `${formatNumber(cloudPct,0)}%`,
-    temp: `${formatNumber(tempF,0)}°F`,
-    night: `${isNight ? "NIGHT" : "DAY"} • Moon ${Math.round(moonPct)}%`,
-    battery: `${batteryPerfState(tempF, cfg).label}`
-  };
-
-  return snapshot;
 }
 
-async function updateFromGPS(){
-  setStatus("Getting GPS…");
+// ---------- Update pipeline
+async function updateFromGPS(isAuto=false){
+  setStatus(isAuto ? "Auto refreshing…" : "Getting GPS…");
   const coords = await getGPS();
   const lat = coords.latitude;
   const lon = coords.longitude;
@@ -624,12 +967,19 @@ async function updateFromGPS(){
 
   const snap = buildSnapshot(data, lat, lon);
 
+  // Launch point set from Update location (your requirement)
+  launchPoint = { lat, lon, timeISO: snap.timeISO };
+  saveLaunchPoint(launchPoint);
+
   locPill.textContent = `Loc: ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
   timePill.textContent = `Updated: ${new Date(snap.timeISO).toLocaleString()}`;
 
   lastSnapshot = snap;
   setOverallState(lastSnapshot);
   renderTiles(lastSnapshot);
+
+  if (autoEnabled) nextRefreshAt = Date.now() + AUTO_REFRESH_MS;
+  refreshAutoPill();
 
   setStatus("Ready.");
 }
@@ -646,6 +996,10 @@ async function updateFromManual(){
 
   const snap = buildSnapshot(data, lat, lon);
 
+  // Manual update ALSO sets launch point (consistent with “Update location” rule)
+  launchPoint = { lat, lon, timeISO: snap.timeISO };
+  saveLaunchPoint(launchPoint);
+
   locPill.textContent = `Loc: ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
   timePill.textContent = `Updated: ${new Date(snap.timeISO).toLocaleString()}`;
 
@@ -653,11 +1007,15 @@ async function updateFromManual(){
   setOverallState(lastSnapshot);
   renderTiles(lastSnapshot);
 
+  if (autoEnabled) nextRefreshAt = Date.now() + AUTO_REFRESH_MS;
+  refreshAutoPill();
+
   setStatus("Ready.");
 }
 
+// ---------- Events
 updateBtn.addEventListener("click", () => {
-  updateFromGPS().catch((e) => {
+  updateFromGPS(false).catch((e) => {
     console.error(e);
     setStatus("Couldn’t update. Check location permission + network.");
   });
@@ -670,25 +1028,33 @@ manualBtn.addEventListener("click", () => {
 });
 moreBtn.addEventListener("click", openMoreModal);
 
+// ---------- SW
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("./sw.js").catch(()=>{});
 }
 
+// ---------- Init
 function renderEmpty(){
   goState.textContent = "—";
   goBar.classList.remove("good","warn","bad");
   goBar.classList.add("warn");
 
+  // Placeholder 3x3
   grid.innerHTML = "";
   TILE_ORDER.forEach((k) => {
     const div = document.createElement("div");
-    div.className = "tile warn";
+    const neutral = (k === "map" || k === "checklist");
+    div.className = neutral ? "tile neutral" : "tile warn";
     div.innerHTML = `
       <div class="tLabel"><span>${k.toUpperCase()}</span><span></span></div>
       <div class="tValueRow"><div class="tValue">—</div><div></div></div>
       <div class="tSub"></div>
     `;
+    div.addEventListener("click", () => openTileModal(k));
     grid.appendChild(div);
   });
 }
 renderEmpty();
+
+// Apply saved auto refresh preference
+setAutoRefresh(autoEnabled);
