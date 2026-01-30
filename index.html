@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#0b1220" />
+  <title>Drone Launch Quick-Check</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <style>
+    :root{
+      --bg:#0b1220; --card:#111827; --border:#1f2937; --text:#e5e7eb; --muted:#9ca3af;
+      --good:#16a34a; --warn:#f59e0b; --bad:#ef4444;
+    }
+    body{font-family:-apple-system,system-ui,Segoe UI,Roboto,Arial;margin:0;background:var(--bg);color:var(--text);}
+    header{padding:14px 16px 10px;background:var(--card);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5;}
+    h1{font-size:16px;margin:0;}
+    .sub{font-size:12px;color:var(--muted);margin-top:4px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .wrap{padding:16px;max-width:980px;margin:0 auto;}
+    .row{display:grid;grid-template-columns:1fr;gap:12px;}
+    @media (min-width:860px){ .row{grid-template-columns:1.2fr .8fr;} }
+    .grid{display:grid;grid-template-columns:1fr;gap:12px;}
+    @media (min-width:620px){ .grid{grid-template-columns:1fr 1fr;} }
+    @media (min-width:980px){ .grid{grid-template-columns:1fr 1fr 1fr;} }
+
+    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;}
+    .metric{border-left:10px solid var(--border);}
+    .metric.good{border-left-color:var(--good);}
+    .metric.warn{border-left-color:var(--warn);}
+    .metric.bad{border-left-color:var(--bad);}
+
+    .label{font-size:12px;color:var(--muted);margin-bottom:6px;}
+    .valueRow{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+    .value{font-size:22px;font-weight:800;line-height:1.1;}
+    .hint{margin-top:6px;font-size:12px;color:var(--muted);}
+
+    .banner{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+    .bannerBox{flex:1;border-radius:14px;padding:12px;border:1px solid var(--border);}
+    .bannerBox.good{border-color:rgba(22,163,74,.6);}
+    .bannerBox.warn{border-color:rgba(245,158,11,.6);}
+    .bannerBox.bad{border-color:rgba(239,68,68,.6);}
+    .bannerTitle{font-size:12px;color:var(--muted);}
+    .bannerState{font-size:20px;font-weight:900;margin-top:4px;}
+
+    button{border:none;border-radius:12px;padding:10px 12px;font-weight:650;background:#2563eb;color:#fff;cursor:pointer;}
+    button.secondary{background:#374151;}
+    button.ghost{background:transparent;border:1px solid var(--border);color:var(--text);}
+    .btnrow{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;}
+
+    .settings input, .settings select, .settings textarea{
+      width:100%; box-sizing:border-box; border-radius:12px; border:1px solid #374151;
+      background:#0b1220; color:var(--text); padding:10px 10px;
+    }
+    .settings textarea{min-height:70px;resize:vertical;}
+    .settings .two{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+    .settings .three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+    .small{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.35;}
+    .pill{padding:3px 8px;border:1px solid var(--border);border-radius:999px;color:var(--muted);font-size:11px}
+    .topline{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+    /* Wind arrow styling */
+    .arrowWrap{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+    .arrowBadge{font-size:10px;color:var(--muted);border:1px solid var(--border);padding:2px 6px;border-radius:999px;}
+    .arrowSvg{display:block}
+    .arrowSmall{width:34px;height:34px;opacity:.95}
+    .arrowBig{width:70px;height:70px;opacity:.98}
+    .arrowText{font-size:11px;color:var(--muted);text-align:right;line-height:1.2}
+
+    .logitem{border-top:1px solid var(--border);padding-top:10px;margin-top:10px;}
+    .logmeta{font-size:11px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;}
+    .lognote{margin-top:6px;font-size:12px;color:var(--text);white-space:pre-wrap;}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="topline">
+      <h1>Drone Launch Quick-Check</h1>
+      <span class="pill" id="sourcePill">Source: Open-Meteo</span>
+      <span class="pill" id="locPill">Loc: —</span>
+      <span class="pill" id="timePill">Updated: —</span>
+    </div>
+    <div class="sub" id="status">Tap “Update” to pull conditions at your current location.</div>
+  </header>
+
+  <div class="wrap">
+    <div class="row">
+      <!-- LEFT: Metrics -->
+      <div class="card">
+        <div class="banner">
+          <div class="bannerBox" id="overallBox">
+            <div class="bannerTitle">Overall Recommendation</div>
+            <div class="bannerState" id="overallState">—</div>
+            <div class="hint" id="overallHint">Tap Update to calculate GO / CAUTION / NO-GO.</div>
+          </div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="label">Launch Snapshot</div>
+        <div class="grid" id="metrics"></div>
+
+        <div class="btnrow">
+          <button id="updateBtn">Update</button>
+          <button class="secondary" id="useManualBtn">Manual location</button>
+          <button class="ghost" id="toggleSettingsBtn">Thresholds</button>
+          <button class="secondary" id="logBtn">Log decision</button>
+        </div>
+
+        <div class="small">
+          Quick visual aid. Verify with SOP and approved sources as required.
+        </div>
+      </div>
+
+      <!-- RIGHT: Settings + Log -->
+      <div>
+        <div class="card settings" id="settingsCard" style="display:none;">
+          <div class="label">Thresholds (edit to match your SOP)</div>
+
+          <div class="two">
+            <div>
+              <label class="label">Units</label>
+              <select id="units">
+                <option value="imperial">Imperial (mph, miles)</option>
+                <option value="metric">Metric (m/s, km)</option>
+              </select>
+            </div>
+            <div>
+              <label class="label">Update interval</label>
+              <select id="autoRefresh">
+                <option value="off">Off</option>
+                <option value="60">Every 1 min</option>
+                <option value="180">Every 3 min</option>
+                <option value="300">Every 5 min</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="height:10px"></div>
+
+          <div class="label">Wind speed (steady)</div>
+          <div class="three">
+            <div><label class="label">Green ≤</label><input id="windGood" type="number" step="0.1"></div>
+            <div><label class="label">Yellow ≤</label><input id="windWarn" type="number" step="0.1"></div>
+            <div><label class="label">Red ></label><input id="windBad" type="number" step="0.1" disabled></div>
+          </div>
+
+          <div style="height:10px"></div>
+
+          <div class="label">Wind gusts</div>
+          <div class="three">
+            <div><label class="label">Green ≤</label><input id="gustGood" type="number" step="0.1"></div>
+            <div><label class="label">Yellow ≤</label><input id="gustWarn" type="number" step="0.1"></div>
+            <div><label class="label">Red ></label><input id="gustBad" type="number" step="0.1" disabled></div>
+          </div>
+
+          <div style="height:10px"></div>
+
+          <div class="label">Visibility</div>
+          <div class="three">
+            <div><label class="label">Green ≥</label><input id="visGood" type="number" step="0.1"></div>
+            <div><label class="label">Yellow ≥</label><input id="visWarn" type="number" step="0.1"></div>
+            <div><label class="label">Red <</label><input id="visBad" type="number" step="0.1" disabled></div>
+          </div>
+
+          <div style="height:10px"></div>
+
+          <div class="label">Precipitation (current)</div>
+          <div class="three">
+            <div><label class="label">Green ≤</label><input id="precipGood" type="number" step="0.01"></div>
+            <div><label class="label">Yellow ≤</label><input id="precipWarn" type="number" step="0.01"></div>
+            <div><label class="label">Red ></label><input id="precipBad" type="number" step="0.01" disabled></div>
+          </div>
+
+          <div style="height:10px"></div>
+
+          <div class="label">Cloud cover</div>
+          <div class="three">
+            <div><label class="label">Green ≤ (%)</label><input id="cloudGood" type="number" step="1"></div>
+            <div><label class="label">Yellow ≤ (%)</label><input id="cloudWarn" type="number" step="1"></div>
+            <div><label class="label">Red ></label><input id="cloudBad" type="number" step="1" disabled></div>
+          </div>
+
+          <div class="btnrow">
+            <button class="secondary" id="saveSettingsBtn">Save</button>
+            <button class="ghost" id="resetSettingsBtn">Reset defaults</button>
+          </div>
+
+          <div class="small">
+            Defaults: Green ≤20 mph • Yellow ≤30 mph • Red >30 mph (edit if needed).
+          </div>
+        </div>
+
+        <div class="card settings" id="logCard">
+          <div class="label">Launch Log</div>
+          <div class="small">Tap “Log decision” after an update. Stored locally on your phone.</div>
+          <div style="height:10px"></div>
+
+          <label class="label">Optional note (mission / address / reason)</label>
+          <textarea id="logNote" placeholder="Example: Perimeter search. Trees near LZ. Held due to gusts."></textarea>
+
+          <div class="btnrow">
+            <button class="secondary" id="exportLogBtn">Export log</button>
+            <button class="ghost" id="clearLogBtn">Clear log</button>
+          </div>
+
+          <div id="logList"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
