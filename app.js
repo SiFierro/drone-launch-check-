@@ -24,21 +24,17 @@ const settingsBtn = el("settingsBtn");
 
 let lastSnapshot = null;
 
-// Defaults (NO thresholds text shown in UI, but used to color tiles & GO bar)
+// Defaults (thresholds are used internally for color/GO bar, but not shown on dashboard)
 const DEFAULTS = {
-  units: "imperial",    // mph + miles
-  // Wind limits per your SOP:
   windGood: 20, windWarn: 30,
   gustGood: 20, gustWarn: 30,
 
-  // Visibility (miles)
   visGood: 3.0, visWarn: 1.5,
 
-  // Precip (mm/hr) and cloud (%)
   precipGood: 0.00, precipWarn: 0.05,
   cloudGood: 70, cloudWarn: 90,
 
-  // Battery perf bands (LE tuned; informational only)
+  // Battery perf (informational only)
   battNormalF: 50,
   battSevereF: 20
 };
@@ -71,7 +67,6 @@ function addLog(entry){
 
 // ---------- Weather fetch (FREE, no API key) ----------
 async function fetchOpenMeteo(lat, lon){
-  // current + hourly trends + sunrise/sunset
   const url =
     "https://api.open-meteo.com/v1/forecast" +
     `?latitude=${encodeURIComponent(lat)}` +
@@ -185,7 +180,6 @@ const TILE_ORDER = [
 ];
 
 function tileSpec(snapshot){
-  // Snapshot values already converted to imperial
   const cfg = loadCfg();
 
   const windCls = classifyLTE(snapshot.windMph, cfg.windGood, cfg.windWarn);
@@ -194,7 +188,7 @@ function tileSpec(snapshot){
   const preCls  = classifyLTE(snapshot.precipMm, cfg.precipGood, cfg.precipWarn);
   const cldCls  = classifyLTE(snapshot.cloudPct, cfg.cloudGood, cfg.cloudWarn);
 
-  // TEMP informational only (still colored, but does NOT affect GO bar)
+  // TEMP informational only
   const tempInfoCls = (snapshot.tempF !== null && snapshot.tempF !== undefined)
     ? (snapshot.tempF < 32 ? "warn" : "good")
     : "warn";
@@ -206,50 +200,49 @@ function tileSpec(snapshot){
       key:"wind", label:"WIND", cls:windCls,
       value:`${formatNumber(snapshot.windMph,0)} mph`,
       sub:`${snapshot.windDirTxt}`,
-      arrow:true,
+      arrow:true
     },
     gusts: {
       key:"gusts", label:"GUSTS", cls:gustCls,
       value:`${formatNumber(snapshot.gustMph,0)} mph`,
       sub:`${snapshot.windDirTxt}`,
-      arrow:true,
+      arrow:true
     },
     dir: {
       key:"dir", label:"DIR", cls:"good",
-      value:`${snapshot.windDirTxt} ${snapshot.windDirDeg==null ? "" : `(${Math.round(snapshot.windDirDeg)}°)`}`.trim(),
+      value:`${snapshot.windDirTxt}${snapshot.windDirDeg==null ? "" : ` (${Math.round(snapshot.windDirDeg)}°)`}`.trim(),
       sub:`Wind FROM`,
       arrowBig:true
     },
     vis: {
       key:"vis", label:"VIS", cls:visCls,
       value:`${formatNumber(snapshot.visMi,1)} mi`,
-      sub:``,
+      sub:``
     },
     precip: {
       key:"precip", label:"PRECIP", cls:preCls,
       value:`${formatNumber(snapshot.precipMm,2)} mm`,
-      sub:``,
+      sub:``
     },
     cloud: {
       key:"cloud", label:"CLOUD", cls:cldCls,
       value:`${formatNumber(snapshot.cloudPct,0)}%`,
-      sub:``,
+      sub:``
     },
     temp: {
       key:"temp", label:"TEMP", cls:tempInfoCls,
       value:`${formatNumber(snapshot.tempF,0)}°F`,
-      sub:``,
+      sub:``
     },
     night: {
       key:"night", label:"NIGHT OPS", cls: snapshot.isNight ? "warn" : "good",
       value:`${snapshot.isNight ? "NIGHT" : "DAY"} • Moon ${Math.round(snapshot.moonPct)}%`,
-      sub:`Sunrise ${snapshot.sunriseTxt} • Sunset ${snapshot.sunsetTxt}`,
+      sub:`Sunrise ${snapshot.sunriseTxt} • Sunset ${snapshot.sunsetTxt}`
     },
     battery: {
       key:"battery", label:"BATTERY PERF", cls:batt.cls,
       value:`${batt.label}`,
-      sub:`${formatNumber(snapshot.tempF,0)}°F`,
-      informational:true
+      sub:`${formatNumber(snapshot.tempF,0)}°F`
     }
   };
 }
@@ -297,14 +290,10 @@ function setOverallState(snapshot){
 
   // Overall only these five:
   const overall = worstClass([windCls, gustCls, visCls, preCls, cldCls]);
-
   goBar.classList.remove("good","warn","bad");
   goBar.classList.add(overall);
 
-  if (overall === "good") goState.textContent = "GO";
-  else if (overall === "warn") goState.textContent = "CAUTION";
-  else goState.textContent = "NO-GO";
-
+  goState.textContent = (overall === "good") ? "GO" : (overall === "warn" ? "CAUTION" : "NO-GO");
   snapshot.overall = overall;
 }
 
@@ -333,7 +322,6 @@ function pickNextHours(data, currentISO, n=4){
 }
 
 function trendLabel(values){
-  // simple up/down/flat for the next 4 points
   const v = values.filter(x => x !== null && x !== undefined && !Number.isNaN(x));
   if (v.length < 2) return "—";
   const delta = v[v.length-1] - v[0];
@@ -360,11 +348,9 @@ function openTileModal(key){
 
   const s = lastSnapshot;
   const data = s.raw;
-  const cfg = loadCfg();
 
   const hourIdxs = pickNextHours(data, s.timeISO, 4);
   const times = data.hourly?.time || [];
-
   const toClock = (iso) => new Date(iso).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
 
   const makeTrendList = (label, unit, values, formatter) => {
@@ -387,7 +373,6 @@ function openTileModal(key){
     `;
   };
 
-  // Hourly arrays (Open-Meteo provides SI for wind; we convert for imperial)
   const h = data.hourly || {};
   const windMphArr = (h.wind_speed_10m || []).map(x => x==null ? null : msToMph(x));
   const gustMphArr = (h.wind_gusts_10m || []).map(x => x==null ? null : msToMph(x));
@@ -397,11 +382,9 @@ function openTileModal(key){
   const tempArr    = (h.temperature_2m || []);
   const dirArr     = (h.wind_direction_10m || []);
 
-  // Common top summary card (minimal)
   const topCard = `
     <div class="detailCard">
       <div class="dRow"><div class="dKey">Current</div><div class="dVal">${s.tileReadout[key] || "—"}</div></div>
-      <div class="tiny">Hourly trend is forecast data. Use SOP judgment for mission conditions.</div>
     </div>
   `;
 
@@ -414,7 +397,6 @@ function openTileModal(key){
     return;
   }
   if (key === "dir"){
-    // show direction trend as compass
     const items = hourIdxs.map((j) => {
       const t = toClock(times[j]);
       const d = dirArr[j];
@@ -424,7 +406,7 @@ function openTileModal(key){
 
     openModal("Wind Direction", `
       <div class="detailCard">
-        <div class="dRow"><div class="dKey">Current direction</div><div class="dVal">${s.windDirTxt}${s.windDirDeg==null ? "" : ` (${Math.round(s.windDirDeg)}°)`}</div></div>
+        <div class="dRow"><div class="dKey">Current</div><div class="dVal">${s.windDirTxt}${s.windDirDeg==null ? "" : ` (${Math.round(s.windDirDeg)}°)`}</div></div>
         <div style="display:flex;justify-content:center;margin-top:12px;">${windArrowSvg(s.windDirDeg, true)}</div>
         <div class="tiny">Arrow shows wind <b>FROM</b> direction.</div>
       </div>
@@ -452,10 +434,8 @@ function openTileModal(key){
     return;
   }
   if (key === "battery"){
-    // BATTERY PERF informational; driven by ambient temp trend
+    const cfg = loadCfg();
     const battNow = batteryPerfState(s.tempF, cfg);
-    const nextTemps = hourIdxs.map(j => tempArr[j]).filter(x => x!=null && !Number.isNaN(x));
-    const nextEnd = nextTemps.length ? nextTemps[nextTemps.length-1] : null;
 
     openModal("Battery Perf", `
       <div class="detailCard">
@@ -465,7 +445,7 @@ function openTileModal(key){
       </div>
       ${makeTrendList("Ambient temperature", "°F", tempArr, v => v==null ? "—" : `${Math.round(v)}`)}
       <div class="detailCard">
-        <div class="dRow"><div class="dKey">Performance expectation</div><div class="dVal">${(nextEnd!=null && nextEnd < cfg.battSevereF) ? "AGGRESSIVE SAG" : (s.tempF!=null && s.tempF < cfg.battNormalF ? "REDUCED TIME" : "NORMAL")}</div></div>
+        <div class="dRow"><div class="dKey">Operational considerations</div><div class="dVal">—</div></div>
         <div class="tiny">
           • Pre-warm packs when possible<br/>
           • Rotate batteries more frequently<br/>
@@ -485,23 +465,18 @@ function openTileModal(key){
         <div class="dRow"><div class="dKey">Sunrise</div><div class="dVal">${s.sunriseTxt}</div></div>
         <div class="dRow" style="margin-top:8px;"><div class="dKey">Sunset</div><div class="dVal">${s.sunsetTxt}</div></div>
       </div>
-      <div class="tiny">Keep lighting conditions and obstacle environment in mind. Use SOP judgment.</div>
     `);
     return;
   }
 }
 
-// ---------- Settings & Log (in modal) ----------
+// ---------- Settings & Log ----------
 function openSettingsModal(){
   const cfg = loadCfg();
   openModal("Settings", `
     <div class="detailCard">
       <div class="dRow"><div class="dKey">Wind caution</div><div class="dVal">${cfg.windGood} mph</div></div>
       <div class="dRow" style="margin-top:10px;"><div class="dKey">Wind no-go</div><div class="dVal">${cfg.windWarn} mph</div></div>
-
-      <div class="tiny" style="margin-top:10px;">
-        These thresholds only drive colors + GO bar. They are not shown on the dashboard.
-      </div>
 
       <div style="margin-top:12px; display:grid; gap:10px;">
         <label class="dKey">Wind caution (mph)</label>
@@ -524,12 +499,8 @@ function openSettingsModal(){
     </div>
   `);
 
-  // wire buttons
   setTimeout(() => {
-    const saveBtn = document.getElementById("saveSettings");
-    const resetBtn = document.getElementById("resetSettings");
-
-    saveBtn?.addEventListener("click", () => {
+    document.getElementById("saveSettings")?.addEventListener("click", () => {
       const next = loadCfg();
       next.windGood = parseFloat(document.getElementById("sWindGood")?.value) || DEFAULTS.windGood;
       next.windWarn = parseFloat(document.getElementById("sWindWarn")?.value) || DEFAULTS.windWarn;
@@ -545,7 +516,7 @@ function openSettingsModal(){
       setStatus("Settings saved.");
     });
 
-    resetBtn?.addEventListener("click", () => {
+    document.getElementById("resetSettings")?.addEventListener("click", () => {
       saveCfg({ ...DEFAULTS });
       if (lastSnapshot) {
         setOverallState(lastSnapshot);
@@ -575,9 +546,7 @@ function openLogModal(){
 
   openModal("Launch Log", `
     <div class="detailCard">
-      <div class="dRow"><div class="dKey">Log a decision</div><div class="dVal">Local Only</div></div>
-
-      <div style="margin-top:10px;">
+      <div style="margin-top:4px;">
         <label class="dKey">Note (optional)</label>
         <textarea id="logNote" style="width:100%;min-height:90px;padding:10px;border-radius:12px;border:1px solid #374151;background:#0b1220;color:#e5e7eb;"></textarea>
       </div>
@@ -588,7 +557,7 @@ function openLogModal(){
         <button class="ghost" id="clearLog">Clear</button>
       </div>
 
-      <div class="tiny" style="margin-top:10px;">Tip: Update first so the log captures the latest snapshot.</div>
+      <div class="tiny" style="margin-top:10px;">Update first so the log captures the latest snapshot.</div>
     </div>
 
     ${list || `<div class="tiny">No entries yet.</div>`}
@@ -644,11 +613,9 @@ function escapeHtml(str){
   }[m]));
 }
 
-// ---------- Update pipeline ----------
+// ---------- Snapshot build ----------
 function buildSnapshot(data, lat, lon){
-  const cfg = loadCfg();
   const c = data.current || {};
-
   const nowISO = c.time || new Date().toISOString();
 
   const windDirDeg = c.wind_direction_10m;
@@ -662,19 +629,19 @@ function buildSnapshot(data, lat, lon){
   const cloudPct = c.cloud_cover ?? null;
   const tempF = c.temperature_2m ?? null;
 
-  // sunrise/sunset
   const sunriseISO = data?.daily?.sunrise?.[0] || null;
   const sunsetISO  = data?.daily?.sunset?.[0]  || null;
   const now = new Date(nowISO);
   const sunrise = sunriseISO ? new Date(sunriseISO) : null;
   const sunset  = sunsetISO ? new Date(sunsetISO) : null;
-
   const isNight = (sunrise && sunset) ? (now < sunrise || now > sunset) : false;
 
   const sunriseTxt = sunrise ? sunrise.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) : "—";
   const sunsetTxt  = sunset ? sunset.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) : "—";
 
   const moonPct = moonIlluminationPct(now);
+
+  const cfg = loadCfg();
 
   const snapshot = {
     timeISO: nowISO,
@@ -685,7 +652,6 @@ function buildSnapshot(data, lat, lon){
     raw: data
   };
 
-  // convenience for modal header
   snapshot.tileReadout = {
     wind: `${formatNumber(windMph,0)} mph`,
     gusts: `${formatNumber(gustMph,0)} mph`,
@@ -701,6 +667,7 @@ function buildSnapshot(data, lat, lon){
   return snapshot;
 }
 
+// ---------- Update pipeline ----------
 async function updateFromGPS(){
   setStatus("Getting GPS…");
   const coords = await getGPS();
@@ -751,14 +718,12 @@ updateBtn.addEventListener("click", () => {
     setStatus("Couldn’t update. Check location permission + network.");
   });
 });
-
 manualBtn.addEventListener("click", () => {
   updateFromManual().catch((e) => {
     console.error(e);
     setStatus("Manual update failed.");
   });
 });
-
 settingsBtn.addEventListener("click", openSettingsModal);
 logBtn.addEventListener("click", openLogModal);
 
@@ -767,7 +732,7 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("./sw.js").catch(()=>{});
 }
 
-// Initial render (empty tiles until first update)
+// Initial render (placeholders)
 function renderEmpty(){
   goState.textContent = "—";
   goBar.classList.remove("good","warn","bad");
