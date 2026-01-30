@@ -13,19 +13,29 @@
       --bg:#0b1220; --card:#111827; --border:#1f2937; --text:#e5e7eb; --muted:#9ca3af;
       --good:#16a34a; --warn:#f59e0b; --bad:#ef4444;
     }
-
     *{ box-sizing:border-box; }
+
+    /* iOS-friendly full height: use dynamic viewport + flex column */
     body{
       margin:0;
       font-family:-apple-system,system-ui,Segoe UI,Roboto,Arial;
       background:var(--bg);
       color:var(--text);
-      height:100vh;
-      overflow:hidden; /* main requirement: no scroll on dashboard */
+
+      min-height:100vh;
+      min-height:100svh;
+      min-height:100dvh;
+
+      display:flex;
+      flex-direction:column;
+
+      overflow:hidden; /* no scroll on dashboard */
+      -webkit-font-smoothing: antialiased;
     }
 
     header{
-      padding:12px 14px 10px;
+      flex:0 0 auto;
+      padding:10px 12px 8px;
       background:var(--card);
       border-bottom:1px solid var(--border);
     }
@@ -35,7 +45,7 @@
       align-items:center;
       flex-wrap:wrap;
     }
-    h1{ margin:0; font-size:15px; font-weight:800; }
+    h1{ margin:0; font-size:15px; font-weight:900; letter-spacing:.2px; }
     .pill{
       padding:3px 8px;
       border:1px solid var(--border);
@@ -45,32 +55,43 @@
       white-space:nowrap;
     }
     .status{
-      margin-top:6px;
-      font-size:12px;
+      margin-top:4px;
+      font-size:11px;
       color:var(--muted);
     }
 
-    /* Layout container: GO bar + 3x3 tiles */
+    /* Main app container fills remaining space */
     .app{
-      height:calc(100vh - 62px); /* approx header height */
-      padding:10px 10px env(safe-area-inset-bottom);
+      flex:1;
+      min-height:0;          /* important for iOS flex overflow behavior */
+      padding:10px;
+      padding-bottom:calc(10px + env(safe-area-inset-bottom));
+
       display:flex;
       flex-direction:column;
       gap:10px;
+
       max-width:980px;
+      width:100%;
       margin:0 auto;
+
+      overflow:hidden;
     }
 
     /* GO/NO-GO bar full width */
     .goBar{
+      flex:0 0 auto;
       border:1px solid var(--border);
       border-radius:14px;
-      padding:10px 12px;
+      padding:8px 10px;
       background:var(--card);
+
       display:flex;
       justify-content:space-between;
       align-items:center;
-      min-height:56px;
+      gap:10px;
+
+      min-height:52px;
     }
     .goBar.good{ border-color: rgba(22,163,74,.7); }
     .goBar.warn{ border-color: rgba(245,158,11,.7); }
@@ -78,7 +99,8 @@
 
     .goLeft{ display:flex; flex-direction:column; gap:2px; }
     .goLabel{ font-size:11px; color:var(--muted); }
-    .goState{ font-size:22px; font-weight:900; letter-spacing:.2px; }
+    .goState{ font-size:20px; font-weight:950; letter-spacing:.2px; }
+
     .goRight{
       display:flex;
       gap:8px;
@@ -86,43 +108,54 @@
       justify-content:flex-end;
       align-items:center;
     }
+
     button{
       border:none;
       border-radius:12px;
-      padding:10px 12px;
-      font-weight:750;
+      padding:9px 10px;
+      font-weight:850;
       background:#2563eb;
       color:#fff;
       cursor:pointer;
-      font-size:13px;
+      font-size:12px;
+      line-height:1;
     }
     button.secondary{ background:#374151; }
     button.ghost{
       background:transparent;
       border:1px solid var(--border);
       color:var(--text);
+      font-weight:800;
     }
 
-    /* 3x3 grid: square tiles */
+    /* Grid takes remaining space */
     .grid{
       flex:1;
+      min-height:0;
       display:grid;
       grid-template-columns:repeat(3, 1fr);
-      gap:10px;
+      gap:8px;
       align-content:stretch;
+      overflow:hidden;
     }
+
+    /* Square tiles */
     .tile{
       background:var(--card);
       border:1px solid var(--border);
       border-radius:14px;
-      padding:10px;
+      padding:8px;
+
       display:flex;
       flex-direction:column;
       justify-content:space-between;
+
       aspect-ratio:1 / 1;
       user-select:none;
       -webkit-tap-highlight-color: transparent;
       cursor:pointer;
+
+      min-height:0;
     }
     .tile.good{ border-color: rgba(22,163,74,.7); }
     .tile.warn{ border-color: rgba(245,158,11,.7); }
@@ -133,33 +166,39 @@
       color:var(--muted);
       letter-spacing:.35px;
       text-transform:uppercase;
+
       display:flex;
       justify-content:space-between;
       align-items:center;
       gap:6px;
     }
+
     .tValueRow{
       display:flex;
       align-items:flex-end;
       justify-content:space-between;
       gap:8px;
+      min-height:0;
     }
     .tValue{
-      font-size:clamp(18px, 2.8vw, 26px);
-      font-weight:900;
-      line-height:1;
+      font-size:clamp(16px, 4.2vw, 22px);
+      font-weight:950;
+      line-height:1.02;
+      letter-spacing:.1px;
+      overflow:hidden;
+      text-overflow:ellipsis;
     }
     .tSub{
-      font-size:11px;
+      font-size:10px;
       color:var(--muted);
-      margin-top:6px;
-      line-height:1.15;
+      margin-top:4px;
+      line-height:1.1;
       white-space:nowrap;
       overflow:hidden;
       text-overflow:ellipsis;
     }
 
-    /* Wind arrow */
+    /* Wind arrows */
     .arrowWrap{ display:flex; align-items:center; gap:6px; }
     .arrowBadge{
       font-size:10px;
@@ -167,11 +206,12 @@
       border:1px solid var(--border);
       padding:2px 6px;
       border-radius:999px;
+      flex-shrink:0;
     }
-    .arrowSmall{ width:28px; height:28px; opacity:.95; flex-shrink:0; }
-    .arrowBig{ width:90px; height:90px; opacity:.98; flex-shrink:0; }
+    .arrowSmall{ width:26px; height:26px; opacity:.95; flex-shrink:0; }
+    .arrowBig{ width:72px; height:72px; opacity:.98; flex-shrink:0; }
 
-    /* Full-screen modal */
+    /* Full-screen modal (only modal scrolls) */
     .modal{
       position:fixed;
       inset:0;
@@ -191,6 +231,7 @@
       display:flex;
       flex-direction:column;
       height:100%;
+      min-height:0;
     }
     .modalTop{
       padding:12px 14px;
@@ -200,10 +241,11 @@
       justify-content:space-between;
       align-items:center;
       gap:10px;
+      flex:0 0 auto;
     }
     .modalTitle{
       font-size:15px;
-      font-weight:900;
+      font-weight:950;
       letter-spacing:.2px;
     }
     .closeX{
@@ -214,14 +256,16 @@
       border:1px solid var(--border);
       color:var(--text);
       font-size:18px;
-      font-weight:900;
+      font-weight:950;
       display:flex;
       align-items:center;
       justify-content:center;
+      cursor:pointer;
     }
     .modalBody{
       padding:14px;
-      overflow:auto;
+      overflow:auto; /* only scrolling area */
+      min-height:0;
     }
 
     .detailCard{
@@ -233,7 +277,8 @@
     }
     .dRow{ display:flex; justify-content:space-between; gap:10px; align-items:baseline; }
     .dKey{ color:var(--muted); font-size:12px; }
-    .dVal{ font-size:20px; font-weight:900; }
+    .dVal{ font-size:20px; font-weight:950; }
+
     .trend{
       margin-top:10px;
       border-top:1px solid var(--border);
@@ -251,12 +296,16 @@
 
     .tiny{ color:var(--muted); font-size:11px; line-height:1.35; margin-top:10px; }
 
-    /* Make tiles fit smaller phones */
+    /* Extra-tight phones */
     @media (max-width:380px){
+      header{ padding:9px 10px 7px; }
       .app{ padding:8px; gap:8px; }
-      .grid{ gap:8px; }
-      .tile{ padding:8px; }
-      .tValue{ font-size:18px; }
+      .grid{ gap:7px; }
+      .tile{ padding:7px; }
+      .arrowSmall{ width:24px; height:24px; }
+      .arrowBig{ width:64px; height:64px; }
+      button{ padding:8px 9px; font-size:12px; }
+      .goState{ font-size:19px; }
     }
   </style>
 </head>
@@ -272,7 +321,6 @@
   </header>
 
   <main class="app">
-    <!-- GO/NO-GO FULL WIDTH -->
     <section class="goBar warn" id="goBar">
       <div class="goLeft">
         <div class="goLabel">Overall</div>
@@ -286,11 +334,9 @@
       </div>
     </section>
 
-    <!-- 3x3 SQUARE TILES -->
     <section class="grid" id="grid"></section>
   </main>
 
-  <!-- FULL SCREEN MODAL (tile details + settings + log) -->
   <div class="modal" id="modal">
     <div class="modalCard">
       <div class="modalTop">
