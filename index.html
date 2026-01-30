@@ -10,13 +10,20 @@
 
   <style>
     :root{
-      --bg:#0b1220; --card:#111827; --border:#1f2937; --text:#e5e7eb; --muted:#9ca3af;
-      --good:#16a34a; --warn:#f59e0b; --bad:#ef4444;
+      --bg:#0b1220;
+      --card:#111827;
+      --border:#1f2937;
+      --text:#e5e7eb;
+      --muted:#9ca3af;
+
+      /* semantic colors */
+      --good:#16a34a;
+      --warn:#f59e0b;
+      --bad:#ef4444;
     }
     *{ box-sizing:border-box; }
     html, body{ width:100%; overflow-x:hidden; }
 
-    /* iOS-friendly full height: dynamic viewport + flex column */
     body{
       margin:0;
       font-family:-apple-system,system-ui,Segoe UI,Roboto,Arial;
@@ -30,7 +37,7 @@
       display:flex;
       flex-direction:column;
 
-      overflow:hidden; /* no scroll on dashboard */
+      overflow:hidden;
       -webkit-font-smoothing: antialiased;
       touch-action: manipulation;
     }
@@ -57,6 +64,7 @@
       color:var(--muted);
       font-size:11px;
       white-space:nowrap;
+      background:rgba(255,255,255,.03);
     }
     .status{
       margin-top:4px;
@@ -64,10 +72,9 @@
       color:var(--muted);
     }
 
-    /* Main app container fills remaining space */
     .app{
       flex:1;
-      min-height:0; /* critical for iOS flex sizing */
+      min-height:0;
       width:100%;
       padding:10px;
       padding-bottom:calc(10px + env(safe-area-inset-bottom));
@@ -83,13 +90,12 @@
       min-width:0;
     }
 
-    /* GO/NO-GO bar full width */
+    /* ========= GO BAR (FULL-WIDTH, FILLED) ========= */
     .goBar{
       flex:0 0 auto;
       border:1px solid var(--border);
       border-radius:14px;
       padding:8px 10px;
-      background:var(--card);
 
       display:flex;
       justify-content:space-between;
@@ -98,16 +104,33 @@
 
       min-height:52px;
       min-width:0;
-    }
-    .goBar.good{ border-color: rgba(22,163,74,.7); }
-    .goBar.warn{ border-color: rgba(245,158,11,.7); }
-    .goBar.bad{  border-color: rgba(239,68,68,.7); }
 
+      background:var(--card);
+      color:var(--text);
+    }
+
+    /* Filled backgrounds + readable text */
+    .goBar.good{
+      background:color-mix(in srgb, var(--good) 78%, #0b1220 22%);
+      border-color:color-mix(in srgb, var(--good) 70%, #000 30%);
+      color:#06200f;
+    }
+    .goBar.warn{
+      background:color-mix(in srgb, var(--warn) 80%, #0b1220 20%);
+      border-color:color-mix(in srgb, var(--warn) 70%, #000 30%);
+      color:#241700;
+    }
+    .goBar.bad{
+      background:color-mix(in srgb, var(--bad) 80%, #0b1220 20%);
+      border-color:color-mix(in srgb, var(--bad) 70%, #000 30%);
+      color:#2a0707;
+    }
+
+    /* Make label readable regardless of bar color */
     .goLeft{ display:flex; flex-direction:column; gap:2px; min-width:0; }
-    .goLabel{ font-size:11px; color:var(--muted); }
+    .goLabel{ font-size:11px; opacity:.85; }
     .goState{ font-size:20px; font-weight:950; letter-spacing:.2px; }
 
-    /* keep buttons compact so they never force horizontal overflow */
     .goRight{
       display:flex;
       gap:8px;
@@ -117,43 +140,51 @@
       min-width:0;
     }
 
+    /* Buttons: keep consistent and legible on colored bar */
     button{
       border:none;
       border-radius:12px;
       padding:9px 10px;
       font-weight:900;
-      background:#2563eb;
-      color:#fff;
       cursor:pointer;
       font-size:12px;
       line-height:1;
       white-space:nowrap;
     }
-    button.secondary{ background:#374151; }
+    /* Primary action: always strong contrast */
+    button.primary{
+      background:#0b1220;
+      color:#e5e7eb;
+      border:1px solid rgba(255,255,255,.18);
+    }
+    button.secondary{
+      background:rgba(11,18,32,.65);
+      color:#e5e7eb;
+      border:1px solid rgba(255,255,255,.14);
+    }
     button.ghost{
       background:transparent;
-      border:1px solid var(--border);
-      color:var(--text);
-      font-weight:900;
+      border:1px solid rgba(11,18,32,.45);
+      color:inherit; /* inherits GO bar text color */
+      opacity:.92;
     }
 
-    /* Grid takes remaining space */
+    /* ========= GRID ========= */
     .grid{
       flex:1;
       min-height:0;
       width:100%;
 
       display:grid;
-      grid-template-columns:repeat(3, minmax(0, 1fr)); /* minmax prevents overflow */
+      grid-template-columns:repeat(3, minmax(0, 1fr));
       gap:8px;
 
       overflow:hidden;
       min-width:0;
     }
 
-    /* Square tiles */
+    /* ========= TILES (FILLED BACKGROUNDS) ========= */
     .tile{
-      background:var(--card);
       border:1px solid var(--border);
       border-radius:14px;
       padding:8px;
@@ -163,7 +194,6 @@
       justify-content:space-between;
 
       aspect-ratio:1 / 1;
-
       user-select:none;
       -webkit-tap-highlight-color: transparent;
       cursor:pointer;
@@ -171,14 +201,31 @@
       min-width:0;
       min-height:0;
       overflow:hidden;
-    }
-    .tile.good{ border-color: rgba(22,163,74,.7); }
-    .tile.warn{ border-color: rgba(245,158,11,.7); }
-    .tile.bad{  border-color: rgba(239,68,68,.7); }
 
+      background:var(--card);
+      color:var(--text);
+    }
+
+    /* Filled tile backgrounds + text color that works */
+    .tile.good{
+      background:color-mix(in srgb, var(--good) 78%, #0b1220 22%);
+      border-color:color-mix(in srgb, var(--good) 70%, #000 30%);
+      color:#06200f;
+    }
+    .tile.warn{
+      background:color-mix(in srgb, var(--warn) 80%, #0b1220 20%);
+      border-color:color-mix(in srgb, var(--warn) 70%, #000 30%);
+      color:#241700;
+    }
+    .tile.bad{
+      background:color-mix(in srgb, var(--bad) 80%, #0b1220 20%);
+      border-color:color-mix(in srgb, var(--bad) 70%, #000 30%);
+      color:#2a0707;
+    }
+
+    /* Label/subtext should be readable on any fill */
     .tLabel{
       font-size:11px;
-      color:var(--muted);
       letter-spacing:.35px;
       text-transform:uppercase;
 
@@ -188,6 +235,8 @@
       gap:6px;
 
       min-width:0;
+
+      opacity:.88;
     }
 
     .tValueRow{
@@ -212,7 +261,6 @@
     }
     .tSub{
       font-size:10px;
-      color:var(--muted);
       margin-top:4px;
       line-height:1.1;
 
@@ -220,13 +268,15 @@
       overflow:hidden;
       text-overflow:ellipsis;
       white-space:nowrap;
+
+      opacity:.80;
     }
 
-    /* Small wind arrows: NO badge (saves width) */
+    /* Arrows should adapt too (use currentColor) */
     .arrowSmall{ width:24px; height:24px; opacity:.95; flex-shrink:0; }
     .arrowBig{ width:70px; height:70px; opacity:.98; flex-shrink:0; }
 
-    /* Full-screen modal (only modal scrolls) */
+    /* ========= MODAL ========= */
     .modal{
       position:fixed;
       inset:0;
@@ -259,6 +309,7 @@
       gap:10px;
       flex:0 0 auto;
       min-width:0;
+      color:var(--text);
     }
     .modalTitle{
       font-size:15px;
@@ -286,10 +337,11 @@
     }
     .modalBody{
       padding:14px;
-      overflow:auto; /* only scrolling area */
+      overflow:auto;
       min-height:0;
       min-width:0;
       -webkit-overflow-scrolling: touch;
+      color:var(--text);
     }
 
     .detailCard{
@@ -298,6 +350,7 @@
       border-radius:14px;
       padding:12px;
       margin-bottom:10px;
+      color:var(--text);
     }
     .dRow{ display:flex; justify-content:space-between; gap:10px; align-items:baseline; }
     .dKey{ color:var(--muted); font-size:12px; }
@@ -321,7 +374,6 @@
 
     .tiny{ color:var(--muted); font-size:11px; line-height:1.35; margin-top:10px; }
 
-    /* Extra-tight phones */
     @media (max-width:380px){
       .app{ padding:8px; gap:8px; }
       .grid{ gap:7px; }
@@ -351,7 +403,7 @@
         <div class="goState" id="goState">—</div>
       </div>
       <div class="goRight">
-        <button id="updateBtn">Update</button>
+        <button class="primary" id="updateBtn">Update</button>
         <button class="secondary" id="manualBtn">Manual</button>
         <button class="ghost" id="moreBtn">More</button>
       </div>
