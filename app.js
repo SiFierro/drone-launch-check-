@@ -1,5 +1,5 @@
-const STORAGE_KEY = "droneQuickCheck.v4";
-const LOG_KEY = "droneQuickCheck.log.v2";
+const STORAGE_KEY = "droneQuickCheck.v5";
+const LOG_KEY = "droneQuickCheck.log.v3";
 
 const el = (id) => document.getElementById(id);
 
@@ -19,12 +19,11 @@ const closeModalBtn = el("closeModal");
 
 const updateBtn = el("updateBtn");
 const manualBtn = el("manualBtn");
-const logBtn = el("logBtn");
-const settingsBtn = el("settingsBtn");
+const moreBtn = el("moreBtn");
 
 let lastSnapshot = null;
 
-// Defaults (thresholds are used internally for color/GO bar, but not shown on dashboard)
+// Thresholds used internally (not shown on dashboard)
 const DEFAULTS = {
   windGood: 20, windWarn: 30,
   gustGood: 20, gustWarn: 30,
@@ -122,31 +121,40 @@ function worstClass(classes){
   if (classes.includes("warn")) return "warn";
   return "good";
 }
-
 function formatNumber(val, decimals=0){
   if (val === null || val === undefined || Number.isNaN(val)) return "—";
   return val.toFixed(decimals);
 }
 
-function windArrowSvg(deg, big=false){
+// Small arrow (no badge) to save horizontal space
+function windArrowSmallSvg(deg){
   const safeDeg = (deg === null || deg === undefined || Number.isNaN(deg)) ? 0 : deg;
-  const sizeClass = big ? "arrowBig" : "arrowSmall";
   return `
-    <div class="arrowWrap">
-      <span class="arrowBadge">FROM</span>
-      <svg class="${sizeClass}" viewBox="0 0 100 100" role="img" aria-label="Wind direction">
-        <g transform="rotate(${safeDeg} 50 50)">
-          <circle cx="50" cy="50" r="30" fill="none" stroke="rgba(229,231,235,.20)" stroke-width="4"/>
-          <line x1="50" y1="18" x2="50" y2="62" stroke="rgba(229,231,235,.95)" stroke-width="6" stroke-linecap="round"/>
-          <polygon points="50,10 40,26 60,26" fill="rgba(229,231,235,.95)"/>
-          <circle cx="50" cy="50" r="6" fill="rgba(229,231,235,.95)"/>
-        </g>
-      </svg>
-    </div>
+    <svg class="arrowSmall" viewBox="0 0 100 100" role="img" aria-label="Wind direction">
+      <g transform="rotate(${safeDeg} 50 50)">
+        <circle cx="50" cy="50" r="28" fill="none" stroke="rgba(229,231,235,.20)" stroke-width="4"/>
+        <line x1="50" y1="18" x2="50" y2="62" stroke="rgba(229,231,235,.95)" stroke-width="6" stroke-linecap="round"/>
+        <polygon points="50,10 40,26 60,26" fill="rgba(229,231,235,.95)"/>
+        <circle cx="50" cy="50" r="6" fill="rgba(229,231,235,.95)"/>
+      </g>
+    </svg>
+  `;
+}
+function windArrowBigSvg(deg){
+  const safeDeg = (deg === null || deg === undefined || Number.isNaN(deg)) ? 0 : deg;
+  return `
+    <svg class="arrowBig" viewBox="0 0 100 100" role="img" aria-label="Wind direction">
+      <g transform="rotate(${safeDeg} 50 50)">
+        <circle cx="50" cy="50" r="30" fill="none" stroke="rgba(229,231,235,.20)" stroke-width="4"/>
+        <line x1="50" y1="18" x2="50" y2="62" stroke="rgba(229,231,235,.95)" stroke-width="6" stroke-linecap="round"/>
+        <polygon points="50,10 40,26 60,26" fill="rgba(229,231,235,.95)"/>
+        <circle cx="50" cy="50" r="6" fill="rgba(229,231,235,.95)"/>
+      </g>
+    </svg>
   `;
 }
 
-// Approx moon illumination % (quick reference)
+// Approx moon illumination %
 function moonIlluminationPct(date = new Date()){
   const year = date.getUTCFullYear();
   const month = date.getUTCMonth() + 1;
@@ -164,9 +172,7 @@ function moonIlluminationPct(date = new Date()){
 
 // Battery perf (informational only)
 function batteryPerfState(tempF, cfg){
-  if (tempF === null || tempF === undefined || Number.isNaN(tempF)) {
-    return { cls:"warn", label:"UNKNOWN" };
-  }
+  if (tempF === null || tempF === undefined || Number.isNaN(tempF)) return { cls:"warn", label:"UNKNOWN" };
   if (tempF >= cfg.battNormalF) return { cls:"good", label:"NORMAL" };
   if (tempF < cfg.battSevereF) return { cls:"bad", label:"SEVERE" };
   return { cls:"warn", label:"DEGRADED" };
@@ -196,54 +202,17 @@ function tileSpec(snapshot){
   const batt = batteryPerfState(snapshot.tempF, cfg);
 
   return {
-    wind: {
-      key:"wind", label:"WIND", cls:windCls,
-      value:`${formatNumber(snapshot.windMph,0)} mph`,
-      sub:`${snapshot.windDirTxt}`,
-      arrow:true
-    },
-    gusts: {
-      key:"gusts", label:"GUSTS", cls:gustCls,
-      value:`${formatNumber(snapshot.gustMph,0)} mph`,
-      sub:`${snapshot.windDirTxt}`,
-      arrow:true
-    },
-    dir: {
-      key:"dir", label:"DIR", cls:"good",
-      value:`${snapshot.windDirTxt}${snapshot.windDirDeg==null ? "" : ` (${Math.round(snapshot.windDirDeg)}°)`}`.trim(),
-      sub:`Wind FROM`,
-      arrowBig:true
-    },
-    vis: {
-      key:"vis", label:"VIS", cls:visCls,
-      value:`${formatNumber(snapshot.visMi,1)} mi`,
-      sub:``
-    },
-    precip: {
-      key:"precip", label:"PRECIP", cls:preCls,
-      value:`${formatNumber(snapshot.precipMm,2)} mm`,
-      sub:``
-    },
-    cloud: {
-      key:"cloud", label:"CLOUD", cls:cldCls,
-      value:`${formatNumber(snapshot.cloudPct,0)}%`,
-      sub:``
-    },
-    temp: {
-      key:"temp", label:"TEMP", cls:tempInfoCls,
-      value:`${formatNumber(snapshot.tempF,0)}°F`,
-      sub:``
-    },
-    night: {
-      key:"night", label:"NIGHT OPS", cls: snapshot.isNight ? "warn" : "good",
-      value:`${snapshot.isNight ? "NIGHT" : "DAY"} • Moon ${Math.round(snapshot.moonPct)}%`,
-      sub:`Sunrise ${snapshot.sunriseTxt} • Sunset ${snapshot.sunsetTxt}`
-    },
-    battery: {
-      key:"battery", label:"BATTERY PERF", cls:batt.cls,
-      value:`${batt.label}`,
-      sub:`${formatNumber(snapshot.tempF,0)}°F`
-    }
+    wind:   { key:"wind",   label:"WIND",        cls:windCls, value:`${formatNumber(snapshot.windMph,0)} mph`, sub:`${snapshot.windDirTxt}`, smallArrow:true },
+    gusts:  { key:"gusts",  label:"GUSTS",       cls:gustCls, value:`${formatNumber(snapshot.gustMph,0)} mph`, sub:`${snapshot.windDirTxt}`, smallArrow:true },
+    dir:    { key:"dir",    label:"DIR",         cls:"good",  value:`${snapshot.windDirTxt}${snapshot.windDirDeg==null ? "" : ` (${Math.round(snapshot.windDirDeg)}°)`}`, sub:`Wind FROM`, bigArrow:true },
+    vis:    { key:"vis",    label:"VIS",         cls:visCls,  value:`${formatNumber(snapshot.visMi,1)} mi`, sub:`` },
+    precip: { key:"precip", label:"PRECIP",      cls:preCls,  value:`${formatNumber(snapshot.precipMm,2)} mm`, sub:`` },
+    cloud:  { key:"cloud",  label:"CLOUD",       cls:cldCls,  value:`${formatNumber(snapshot.cloudPct,0)}%`, sub:`` },
+    temp:   { key:"temp",   label:"TEMP",        cls:tempInfoCls, value:`${formatNumber(snapshot.tempF,0)}°F`, sub:`` },
+    night:  { key:"night",  label:"NIGHT OPS",   cls:snapshot.isNight ? "warn" : "good",
+              value:`${snapshot.isNight ? "NIGHT" : "DAY"} • Moon ${Math.round(snapshot.moonPct)}%`,
+              sub:`Sunrise ${snapshot.sunriseTxt} • Sunset ${snapshot.sunsetTxt}` },
+    battery:{ key:"battery",label:"BATTERY PERF",cls:batt.cls, value:`${batt.label}`, sub:`${formatNumber(snapshot.tempF,0)}°F` }
   };
 }
 
@@ -257,8 +226,8 @@ function renderTiles(snapshot){
     div.className = `tile ${t.cls}`;
     div.dataset.tile = t.key;
 
-    const labelRight = t.arrowBig ? "" : (t.arrow ? windArrowSvg(snapshot.windDirDeg, false) : "");
-    const bigArrow = t.arrowBig ? windArrowSvg(snapshot.windDirDeg, true) : "";
+    const labelRight = t.smallArrow ? windArrowSmallSvg(snapshot.windDirDeg) : "";
+    const bigArrow = setIf(t.bigArrow, windArrowBigSvg(snapshot.windDirDeg));
 
     div.innerHTML = `
       <div class="tLabel">
@@ -267,11 +236,11 @@ function renderTiles(snapshot){
       </div>
 
       <div class="tValueRow">
-        <div class="tValue">${t.value}</div>
-        ${t.arrowBig ? bigArrow : ""}
+        <div class="tValue">${escapeHtml(t.value)}</div>
+        ${bigArrow}
       </div>
 
-      <div class="tSub">${t.sub || ""}</div>
+      <div class="tSub">${escapeHtml(t.sub || "")}</div>
     `;
 
     div.addEventListener("click", () => openTileModal(t.key));
@@ -279,7 +248,9 @@ function renderTiles(snapshot){
   });
 }
 
-// ---------- Overall GO/NO-GO ----------
+function setIf(cond, html){ return cond ? html : ""; }
+
+// ---------- GO / CAUTION / NO-GO ----------
 function setOverallState(snapshot){
   const cfg = loadCfg();
   const windCls = classifyLTE(snapshot.windMph, cfg.windGood, cfg.windWarn);
@@ -288,8 +259,8 @@ function setOverallState(snapshot){
   const preCls  = classifyLTE(snapshot.precipMm, cfg.precipGood, cfg.precipWarn);
   const cldCls  = classifyLTE(snapshot.cloudPct, cfg.cloudGood, cfg.cloudWarn);
 
-  // Overall only these five:
   const overall = worstClass([windCls, gustCls, visCls, preCls, cldCls]);
+
   goBar.classList.remove("good","warn","bad");
   goBar.classList.add(overall);
 
@@ -297,39 +268,7 @@ function setOverallState(snapshot){
   snapshot.overall = overall;
 }
 
-// ---------- Hourly trends (next 4 hours) ----------
-function findHourIndex(hourlyTimeISO, currentISO){
-  const current = new Date(currentISO).getTime();
-  let best = 0;
-  let bestDelta = Infinity;
-  for (let i=0;i<hourlyTimeISO.length;i++){
-    const t = new Date(hourlyTimeISO[i]).getTime();
-    const d = Math.abs(t - current);
-    if (d < bestDelta){ bestDelta = d; best = i; }
-  }
-  return best;
-}
-
-function pickNextHours(data, currentISO, n=4){
-  const t = data.hourly?.time || [];
-  const idx = t.length ? findHourIndex(t, currentISO) : 0;
-  const out = [];
-  for (let i=1;i<=n;i++){
-    const j = idx + i;
-    if (j < t.length) out.push(j);
-  }
-  return out;
-}
-
-function trendLabel(values){
-  const v = values.filter(x => x !== null && x !== undefined && !Number.isNaN(x));
-  if (v.length < 2) return "—";
-  const delta = v[v.length-1] - v[0];
-  const abs = Math.abs(delta);
-  if (abs < 0.01) return "STABLE";
-  return delta > 0 ? "INCREASING" : "DECREASING";
-}
-
+// ---------- Modal ----------
 function openModal(title, html){
   modalTitle.textContent = title;
   modalBody.innerHTML = html;
@@ -342,6 +281,43 @@ function closeModal(){
 }
 closeModalBtn.addEventListener("click", closeModal);
 modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
+
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, (m) => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+  }[m]));
+}
+
+// ---------- Hourly trend helpers ----------
+function findHourIndex(hourlyTimeISO, currentISO){
+  const current = new Date(currentISO).getTime();
+  let best = 0;
+  let bestDelta = Infinity;
+  for (let i=0;i<hourlyTimeISO.length;i++){
+    const t = new Date(hourlyTimeISO[i]).getTime();
+    const d = Math.abs(t - current);
+    if (d < bestDelta){ bestDelta = d; best = i; }
+  }
+  return best;
+}
+function pickNextHours(data, currentISO, n=4){
+  const t = data.hourly?.time || [];
+  const idx = t.length ? findHourIndex(t, currentISO) : 0;
+  const out = [];
+  for (let i=1;i<=n;i++){
+    const j = idx + i;
+    if (j < t.length) out.push(j);
+  }
+  return out;
+}
+function trendLabel(values){
+  const v = values.filter(x => x !== null && x !== undefined && !Number.isNaN(x));
+  if (v.length < 2) return "—";
+  const delta = v[v.length-1] - v[0];
+  const abs = Math.abs(delta);
+  if (abs < 0.01) return "STABLE";
+  return delta > 0 ? "INCREASING" : "DECREASING";
+}
 
 function openTileModal(key){
   if (!lastSnapshot) return;
@@ -384,7 +360,7 @@ function openTileModal(key){
 
   const topCard = `
     <div class="detailCard">
-      <div class="dRow"><div class="dKey">Current</div><div class="dVal">${s.tileReadout[key] || "—"}</div></div>
+      <div class="dRow"><div class="dKey">Current</div><div class="dVal">${escapeHtml(s.tileReadout[key] || "—")}</div></div>
     </div>
   `;
 
@@ -406,8 +382,8 @@ function openTileModal(key){
 
     openModal("Wind Direction", `
       <div class="detailCard">
-        <div class="dRow"><div class="dKey">Current</div><div class="dVal">${s.windDirTxt}${s.windDirDeg==null ? "" : ` (${Math.round(s.windDirDeg)}°)`}</div></div>
-        <div style="display:flex;justify-content:center;margin-top:12px;">${windArrowSvg(s.windDirDeg, true)}</div>
+        <div class="dRow"><div class="dKey">Current</div><div class="dVal">${escapeHtml(s.windDirTxt)}${s.windDirDeg==null ? "" : ` (${Math.round(s.windDirDeg)}°)`}</div></div>
+        <div style="display:flex;justify-content:center;margin-top:12px;">${windArrowBigSvg(s.windDirDeg)}</div>
         <div class="tiny">Arrow shows wind <b>FROM</b> direction.</div>
       </div>
       <div class="detailCard">
@@ -470,7 +446,27 @@ function openTileModal(key){
   }
 }
 
-// ---------- Settings & Log ----------
+// ---------- More menu (Log + Settings) ----------
+function openMoreModal(){
+  openModal("More", `
+    <div class="detailCard">
+      <div class="dRow"><div class="dKey">Actions</div><div class="dVal">—</div></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
+        <button class="secondary" id="openLog">Launch Log</button>
+        <button class="ghost" id="openSettings">Settings</button>
+      </div>
+      <div class="tiny" style="margin-top:10px;">
+        Kept off the main bar to ensure the 3×3 grid always fits on iPhone.
+      </div>
+    </div>
+  `);
+
+  setTimeout(() => {
+    document.getElementById("openLog")?.addEventListener("click", () => openLogModal());
+    document.getElementById("openSettings")?.addEventListener("click", () => openSettingsModal());
+  }, 0);
+}
+
 function openSettingsModal(){
   const cfg = loadCfg();
   openModal("Settings", `
@@ -508,20 +504,14 @@ function openSettingsModal(){
       next.gustWarn = parseFloat(document.getElementById("sGustWarn")?.value) || DEFAULTS.gustWarn;
 
       saveCfg(next);
-      if (lastSnapshot) {
-        setOverallState(lastSnapshot);
-        renderTiles(lastSnapshot);
-      }
+      if (lastSnapshot) { setOverallState(lastSnapshot); renderTiles(lastSnapshot); }
       closeModal();
       setStatus("Settings saved.");
     });
 
     document.getElementById("resetSettings")?.addEventListener("click", () => {
       saveCfg({ ...DEFAULTS });
-      if (lastSnapshot) {
-        setOverallState(lastSnapshot);
-        renderTiles(lastSnapshot);
-      }
+      if (lastSnapshot) { setOverallState(lastSnapshot); renderTiles(lastSnapshot); }
       closeModal();
       setStatus("Settings reset.");
     });
@@ -546,10 +536,8 @@ function openLogModal(){
 
   openModal("Launch Log", `
     <div class="detailCard">
-      <div style="margin-top:4px;">
-        <label class="dKey">Note (optional)</label>
-        <textarea id="logNote" style="width:100%;min-height:90px;padding:10px;border-radius:12px;border:1px solid #374151;background:#0b1220;color:#e5e7eb;"></textarea>
-      </div>
+      <label class="dKey">Note (optional)</label>
+      <textarea id="logNote" style="width:100%;min-height:90px;padding:10px;border-radius:12px;border:1px solid #374151;background:#0b1220;color:#e5e7eb;"></textarea>
 
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
         <button class="secondary" id="logDecision">Log</button>
@@ -566,7 +554,6 @@ function openLogModal(){
   setTimeout(() => {
     document.getElementById("logDecision")?.addEventListener("click", () => {
       if (!lastSnapshot) return alert("Update first so there’s a snapshot to log.");
-
       const note = (document.getElementById("logNote")?.value || "").trim();
       const decision = lastSnapshot.overall === "good" ? "go" : (lastSnapshot.overall === "warn" ? "caution" : "no-go");
 
@@ -605,12 +592,6 @@ function exportLog(){
   a.download = `drone-launch-log-${new Date().toISOString().slice(0,10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
-}
-
-function escapeHtml(str){
-  return String(str).replace(/[&<>"']/g, (m) => ({
-    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
-  }[m]));
 }
 
 // ---------- Snapshot build ----------
@@ -724,15 +705,14 @@ manualBtn.addEventListener("click", () => {
     setStatus("Manual update failed.");
   });
 });
-settingsBtn.addEventListener("click", openSettingsModal);
-logBtn.addEventListener("click", openLogModal);
+moreBtn.addEventListener("click", openMoreModal);
 
 // ---------- Service Worker ----------
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("./sw.js").catch(()=>{});
 }
 
-// Initial render (placeholders)
+// Initial placeholders
 function renderEmpty(){
   goState.textContent = "—";
   goBar.classList.remove("good","warn","bad");
