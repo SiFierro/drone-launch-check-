@@ -1,4 +1,4 @@
-const CACHE = "drone-quickcheck-v6";
+const CACHE = "drone-quickcheck-v7";
 const ASSETS = [
   "./",
   "./index.html",
