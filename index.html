@@ -8,6 +8,14 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
 
+  <!-- Leaflet (OpenStreetMap) -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+
   <style>
     :root{
       --bg:#0b1220;
@@ -16,7 +24,6 @@
       --text:#e5e7eb;
       --muted:#9ca3af;
 
-      /* semantic colors */
       --good:#16a34a;
       --warn:#f59e0b;
       --bad:#ef4444;
@@ -90,7 +97,7 @@
       min-width:0;
     }
 
-    /* ========= GO BAR (FULL-WIDTH, FILLED) ========= */
+    /* GO BAR (FILLED) */
     .goBar{
       flex:0 0 auto;
       border:1px solid var(--border);
@@ -108,8 +115,6 @@
       background:var(--card);
       color:var(--text);
     }
-
-    /* Filled backgrounds + readable text */
     .goBar.good{
       background:color-mix(in srgb, var(--good) 78%, #0b1220 22%);
       border-color:color-mix(in srgb, var(--good) 70%, #000 30%);
@@ -126,7 +131,6 @@
       color:#2a0707;
     }
 
-    /* Make label readable regardless of bar color */
     .goLeft{ display:flex; flex-direction:column; gap:2px; min-width:0; }
     .goLabel{ font-size:11px; opacity:.85; }
     .goState{ font-size:20px; font-weight:950; letter-spacing:.2px; }
@@ -140,7 +144,6 @@
       min-width:0;
     }
 
-    /* Buttons: keep consistent and legible on colored bar */
     button{
       border:none;
       border-radius:12px;
@@ -151,7 +154,6 @@
       line-height:1;
       white-space:nowrap;
     }
-    /* Primary action: always strong contrast */
     button.primary{
       background:#0b1220;
       color:#e5e7eb;
@@ -165,25 +167,23 @@
     button.ghost{
       background:transparent;
       border:1px solid rgba(11,18,32,.45);
-      color:inherit; /* inherits GO bar text color */
+      color:inherit;
       opacity:.92;
     }
 
-    /* ========= GRID ========= */
+    /* GRID */
     .grid{
       flex:1;
       min-height:0;
       width:100%;
-
       display:grid;
       grid-template-columns:repeat(3, minmax(0, 1fr));
       gap:8px;
-
       overflow:hidden;
       min-width:0;
     }
 
-    /* ========= TILES (FILLED BACKGROUNDS) ========= */
+    /* TILES (FILLED by status) */
     .tile{
       border:1px solid var(--border);
       border-radius:14px;
@@ -205,8 +205,6 @@
       background:var(--card);
       color:var(--text);
     }
-
-    /* Filled tile backgrounds + text color that works */
     .tile.good{
       background:color-mix(in srgb, var(--good) 78%, #0b1220 22%);
       border-color:color-mix(in srgb, var(--good) 70%, #000 30%);
@@ -222,20 +220,22 @@
       border-color:color-mix(in srgb, var(--bad) 70%, #000 30%);
       color:#2a0707;
     }
+    /* Neutral tiles (Map / Checklist) */
+    .tile.neutral{
+      background:var(--card);
+      border-color:var(--border);
+      color:var(--text);
+    }
 
-    /* Label/subtext should be readable on any fill */
     .tLabel{
       font-size:11px;
       letter-spacing:.35px;
       text-transform:uppercase;
-
       display:flex;
       justify-content:space-between;
       align-items:center;
       gap:6px;
-
       min-width:0;
-
       opacity:.88;
     }
 
@@ -244,7 +244,6 @@
       align-items:flex-end;
       justify-content:space-between;
       gap:8px;
-
       min-width:0;
       min-height:0;
     }
@@ -253,7 +252,6 @@
       font-weight:950;
       line-height:1.02;
       letter-spacing:.1px;
-
       min-width:0;
       overflow:hidden;
       text-overflow:ellipsis;
@@ -263,20 +261,17 @@
       font-size:10px;
       margin-top:4px;
       line-height:1.1;
-
       min-width:0;
       overflow:hidden;
       text-overflow:ellipsis;
       white-space:nowrap;
-
       opacity:.80;
     }
 
-    /* Arrows should adapt too (use currentColor) */
     .arrowSmall{ width:24px; height:24px; opacity:.95; flex-shrink:0; }
     .arrowBig{ width:70px; height:70px; opacity:.98; flex-shrink:0; }
 
-    /* ========= MODAL ========= */
+    /* MODAL */
     .modal{
       position:fixed;
       inset:0;
@@ -371,8 +366,48 @@
       gap:10px;
     }
     .trendItem span{ color:var(--muted); }
-
     .tiny{ color:var(--muted); font-size:11px; line-height:1.35; margin-top:10px; }
+
+    /* Map container */
+    #map{
+      width:100%;
+      height:60vh;
+      border-radius:14px;
+      overflow:hidden;
+      border:1px solid var(--border);
+      background:#0b1220;
+    }
+    @media (min-height: 750px){
+      #map{ height:65vh; }
+    }
+    @media (max-height: 650px){
+      #map{ height:55vh; }
+    }
+
+    /* Checklist styling */
+    .sectionTitle{
+      font-size:12px;
+      letter-spacing:.35px;
+      text-transform:uppercase;
+      color:var(--muted);
+      margin:14px 0 8px;
+    }
+    .checklistItem{
+      padding:10px 12px;
+      border:1px solid var(--border);
+      border-radius:14px;
+      background:rgba(255,255,255,.03);
+      margin-bottom:8px;
+      font-size:14px;
+      line-height:1.25;
+    }
+    .checklistItem small{
+      display:block;
+      margin-top:4px;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.25;
+    }
 
     @media (max-width:380px){
       .app{ padding:8px; gap:8px; }
@@ -382,6 +417,7 @@
       .goState{ font-size:19px; }
       .arrowSmall{ width:22px; height:22px; }
       .arrowBig{ width:62px; height:62px; }
+      #map{ height:52vh; }
     }
   </style>
 </head>
@@ -392,6 +428,7 @@
       <h1>Drone Launch Quick-Check</h1>
       <span class="pill" id="locPill">Loc: —</span>
       <span class="pill" id="timePill">Updated: —</span>
+      <span class="pill" id="autoPill">Auto: OFF</span>
     </div>
     <div class="status" id="status">Tap Update to pull conditions.</div>
   </header>
@@ -421,6 +458,12 @@
       <div class="modalBody" id="modalBody"></div>
     </div>
   </div>
+
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
 
   <script src="app.js"></script>
 </body>
